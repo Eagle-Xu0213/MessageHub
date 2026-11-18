@@ -18,6 +18,7 @@ MessageHub 以 [MIT](LICENSE) 协议发布。本文件列出其依赖或调用�
 | Jinja2 | BSD-3-Clause | <https://github.com/pallets/jinja2> |
 | Pydantic | MIT | <https://github.com/pydantic/pydantic> |
 | python-dotenv | BSD-3-Clause | <https://github.com/theskumar/python-dotenv> |
+| python-multipart | Apache-2.0 | <https://github.com/Kludex/python-multipart> |
 | zstandard | BSD-3-Clause | <https://github.com/indygreg/python-zstandard> |
 | httpx | BSD-3-Clause | <https://github.com/encode/httpx> |
 

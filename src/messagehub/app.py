@@ -75,7 +75,7 @@ app.include_router(live.router)
 app.include_router(brief.router)
 # lifespan 统一在上方 _combined_lifespan 组装（采集器 + 调度器），
 # 勿再对各模块的 register_startup_hook 赋值 lifespan_context（会互相覆盖，2026-11-18 回归教训）
-brief_mail.register()  # R5 邮件桥：简报有实质内容时自动发到 Muse 收件箱
+brief_mail.register()  # 邮件桥：简报有实质内容时自动发到配置的收件箱
 
 init_db()
 

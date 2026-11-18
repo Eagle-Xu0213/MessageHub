@@ -1,13 +1,13 @@
-"""R5 简报邮件桥：把每日简报以 HTML 邮件发送到 Muse 连接的收件箱。
+"""简报邮件桥：把每日简报以 HTML 邮件发送到指定收件箱。
 
-用户设计（2026-11-17）：无具体时间的事件不适合日历，而 Muse 读邮件成熟——
-简报自动发到 Muse 连接的邮箱，Muse 自动读取并统一规划日程。
+为什么用邮件：没有具体时间的事件不适合塞进日历，而邮件能被各种
+AI 助手读取并统一规划日程——简报发到邮箱，后续处理交给读邮件的工具。
 
-配置（.env）：
+配置（.env，全部可选；不配则只在网页显示简报，不发信）：
   SMTP_HOST=smtp.qq.com
   SMTP_PORT=465
   SMTP_USER=your-account@qq.com
-  SMTP_PASS=<16位授权码>
+  SMTP_PASS=<邮箱授权码，不是登录密码>
   BRIEF_TO=your-inbox@example.com
 
 调用方：schedule.register_notify_hook(send_brief_email) —— 简报有实质
@@ -48,7 +48,7 @@ def _smtp_config() -> Optional[Dict[str, str]]:
 
 
 def render_brief_html(brief: Dict[str, Any]) -> str:
-    """简报 → 邮件 HTML（Muse 与人类都易读：分栏、可溯源字段齐全）。"""
+    """简报 → 邮件 HTML（分栏、字段可溯源，邮件客户端里也好读）。"""
     from html import escape as e
 
     def item(ev: Dict[str, Any]) -> str:
@@ -94,7 +94,7 @@ def render_brief_html(brief: Dict[str, Any]) -> str:
   <div style="font-size:11px;color:#aaa;">
     由 MessageHub 规则引擎自动生成（{e(brief.get("generated_at", ""))}）·
     事件来自真实群消息，可在 http://127.0.0.1:8000/brief 溯源 ·
-    此邮件同步送达 Muse 收件箱供日程规划
+    此邮件同时送达配置的收件箱，供后续日程规划使用
   </div>
 </div>"""
 

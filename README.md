@@ -12,12 +12,14 @@
 
 - [能做什么](#能做什么)
 - [它是怎么工作的](#它是怎么工作的)
-- [快速开始](#快速开始)
+- [零基础安装（Windows，从零开始）](#零基础安装windows从零开始)
+- [快速开始（开发者）](#快速开始开发者)
 - [Moect 集成（微信消息来源）](#moect-集成微信消息来源)
 - [配置](#配置)
 - [工作事件提取规则](#工作事件提取规则)
 - [页面与 API](#页面与-api)
 - [数据来源适配器](#数据来源适配器)
+- [排错 FAQ](#排错-faq)
 - [测试](#测试)
 - [安全边界](#安全边界)
 - [已知限制](#已知限制)
@@ -73,7 +75,95 @@
 
 ---
 
-## 快速开始
+## 零基础安装（Windows，从零开始）
+
+没写过代码也能装。每一步只做一件事，做完再进下一步。
+
+### 第 1 步：安装 Python 3.12
+
+- 浏览器打开 <https://www.python.org/downloads/>，点黄色的 **Download Python 3.12.x** 按钮
+- 运行下载的安装包，**安装第一屏最下方务必勾选 `Add python.exe to PATH`**，再点 Install Now
+- 装完按 `Win+R`，输入 `cmd` 回车，在新窗口输入 `python --version`，显示 `Python 3.12.x` 就成功了
+
+也可以在 cmd 里一行搞定（Win10/11 自带 winget）：
+
+```bat
+winget install Python.Python.3.12
+```
+
+> ✅ 成功的样子：`python --version` 有版本号输出。
+> ✗ 失败了：看 [排错 FAQ](#排错-faq) 第 2 条。
+
+### 第 2 步：安装 Git
+
+```bat
+winget install Git.Git
+```
+
+装完**关掉旧的 cmd 窗口，开一个新窗口**（否则 git 命令不生效），输入 `git --version` 验证。
+
+### 第 3 步：下载本项目
+
+```bat
+cd /d %USERPROFILE%\Desktop
+git clone https://github.com/Eagle-Xu0213/MessageHub.git
+cd MessageHub
+```
+
+这会把项目下载到你的桌面，并进入项目目录。以后所有的命令都在这个目录里运行。
+
+### 第 4 步：双击 `setup.bat`
+
+它会自动完成：创建独立运行环境 → 下载依赖 → 生成配置文件 → 打开记事本让你填写身份 → 自检。第一次运行需要联网下载依赖，大约 1-2 分钟。
+
+> ✅ 成功的样子：窗口最后显示「安装完成！下一步」，并且**没有红色报错**。
+> 重复双击也是安全的，已完成的步骤会自动跳过。
+
+### 第 5 步：填写你的身份和工作群
+
+setup.bat 会自动打开记事本，编辑 `config\personal.json`，把里面两项改成你自己的：
+
+```json
+{
+  "identity": {
+    "nicknames": ["你的微信昵称"],
+    "real_name": "你的真名",
+    "sender_names": ["你的微信昵称"]
+  },
+  "groups": {
+    "work": ["你的工作群名1", "你的工作群名2"]
+  }
+}
+```
+
+- `nicknames` / `real_name` / `sender_names`：程序靠它认出「哪条消息是在叫你」
+- `groups.work`：程序靠它判断「哪些群是来工作的」
+
+保存关闭即可。字段含义详见 [配置](#配置) 章节。
+
+> ⚠️ **不填会怎样**：软件能启动、能导入历史消息，但**不会生成任何待办**——因为它不知道你是谁、哪些群算工作群。这是「简报是空的」的第一大原因。
+
+### 第 6 步（可选）：要用微信实时采集，安装 Moect
+
+不需要实时采集微信消息的话，跳过这步，直接进第 7 步。
+
+```bat
+winget install Moect
+```
+
+装完后先**手动运行一次 Moect**，确认它能解密你的微信数据、生成快照。这一步不通过，后面都白搭。详细步骤见 [Moect 集成](#moect-集成微信消息来源) 章节。
+
+### 第 7 步：双击「启动 MessageHub.bat」
+
+浏览器会自动打开 <http://127.0.0.1:8000/>，工作台页面出现即成功。保持窗口开启即可使用，关闭窗口即停止服务。
+
+之后每天的使用就是：**双击启动 → 看简报 → 干活**。
+
+---
+
+## 快速开始（开发者）
+
+已经熟悉 Python 和命令行的话，走这条路：
 
 ### 环境要求
 
@@ -139,7 +229,7 @@ python -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000
 
 打开 <http://127.0.0.1:8000/>。
 
-`启动 MessageHub.bat` 会自动探测 Python（优先 `.venv`，其次 PATH），换机器不用改脚本。
+`启动 MessageHub.bat` 会自动探测 Python（优先 `.venv`，其次 PATH），换机器不用改脚本。零基础用户装完环境后也可以直接用它——只要先跑过一次 `setup.bat` 把依赖装好。
 
 ---
 
@@ -189,16 +279,19 @@ dir "%LOCALAPPDATA%\Moect\archives"
 
 `scripts/moect_live.py` 会按顺序自动探测：
 
-1. 环境变量 `MOECT_EXE`
-2. `%LOCALAPPDATA%\Programs\Moect\Moect.exe`
-3. `%PROGRAMFILES%\Moect\Moect.exe`
-4. `%PROGRAMFILES(X86)%\Moect\Moect.exe`
+1. 系统环境变量 `MOECT_EXE`
+2. 项目根 `.env` 文件里的 `MOECT_EXE`（采集器自己会读取 `.env`）
+3. `%LOCALAPPDATA%\Programs\Moect\Moect.exe`
+4. `%PROGRAMFILES%\Moect\Moect.exe`
+5. `%PROGRAMFILES(X86)%\Moect\Moect.exe`
 
 **装在别处就必须显式指定**，在 `.env` 里加：
 
 ```ini
-MOECT_EXE=D:\Applications\Moect\Moect.exe
+MOECT_EXE=C:\Tools\Moect\Moect.exe
 ```
+
+`scripts/moect_live.py` 启动时会自动读取项目根的 `.env`。改完 `.env` 后无需重启采集器，下一轮采集生效。
 
 先验证一下探测结果：
 
@@ -271,6 +364,18 @@ python scripts/moect_live.py --loop --interval 120
 **水位回看 5 分钟**。新消息落库可能乱序（`create_time` 相同或倒序），所以水位推进时回退 300 秒覆盖这种抖动。重复由 ingest 端指纹去重兜底，多推不会重复入库。
 
 **快照恒定一份**。每轮生成的快照会被合并移动到 `runtime/moect_data/archives/current/`，旧的删掉。不清理的话每次刷新都是一个 1.5 GB 的目录，磁盘会炸。清理有路径白名单校验，**永不触碰** `%LOCALAPPDATA%\Moect\archives` 下你自己的快照。
+
+### 常见失败与处理
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `--check` 显示 Moect ✗ 未找到 | 装在非标准位置 | 按上面的方法在 `.env` 里写 `MOECT_EXE=完整路径` |
+| Moect 解不开密钥 / 报密钥错误 | 微信未登录，或微信刚升级密钥变了 | 先登录微信桌面版并保持运行；重启微信后重跑 Moect；确认微信是 4.x 版本 |
+| 快照目录是空的 | Moect 还没成功跑过一次解密 | 手动打开 Moect 界面完整跑一次导出，看到快照生成后再用本项目的采集器 |
+| `dir "%LOCALAPPDATA%\Moect\archives"` 看不到 `snapshot_*` | 快照位置不在默认处 | 在 Moect 设置里确认导出位置，或检查 `%LOCALAPPDATA%\Moect` 是否存在 |
+| 采集器报连不上 127.0.0.1:8000 | MessageHub 服务没启动 | 先双击「启动 MessageHub.bat」，等页面能打开再跑采集 |
+
+排查顺序建议：先跑 `.venv\Scripts\python scripts\moect_live.py --check`，它会一行行告诉你哪项没就绪。
 
 ### 不用 Moect 可以吗
 
@@ -443,6 +548,67 @@ GET  /api/messages/search?q=关键词             全文检索
 
 ---
 
+## 排错 FAQ
+
+**1. 简报里什么都没有 / 没有生成待办**
+
+第一大原因：`config\personal.json` 没填你的身份和工作群。程序不知道「谁是你」「哪些群算工作群」，就不会提取任何事件。用记事本打开该文件，填好 `identity` 和 `groups.work`，重启服务。
+
+**2. 双击 setup.bat 说找不到 Python**
+
+- 安装 Python 时没勾 **Add python.exe to PATH** → 重新运行安装包勾选，或用 `winget install Python.Python.3.12`
+- 装好了但旧 cmd 窗口不认识 → **关掉所有 cmd 窗口，开新窗口再试**（PATH 只在新进程生效）
+
+**3. pip 安装依赖失败 / 超时**
+
+国内网络较慢或被代理拦截。打开 cmd 进入项目目录，改用清华镜像手动装：
+
+```bat
+.venv\Scripts\pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+装完重新双击 setup.bat，它会跳过已完成的步骤继续。
+
+**4. 双击 setup.bat 窗口一闪而过**
+
+正常情况下报错会停住等你按键。如果真闪退了：打开 cmd，把 setup.bat 拖进窗口回车运行，就能看到报错内容。
+
+**5. 启动后浏览器页面打不开**
+
+- 服务启动要几秒，等一下再刷新
+- 看「启动 MessageHub.bat」窗口里有没有红色报错
+- 手动在浏览器输入 `http://127.0.0.1:8000/` 试试
+
+**6. 提示端口 8000 被占用**
+
+可能是上一个 MessageHub 没退干净，或别的软件占了 8000。查看占用：
+
+```bat
+netstat -ano | findstr :8000
+```
+
+不想折腾就改端口：用记事本打开 `.env`，把 `PORT=8000` 改成 `PORT=8001`，重新启动。
+
+**7. Moect 找不到 / 快照找不到 / 密钥解不开**
+
+见 [Moect 集成 → 常见失败与处理](#常见失败与处理)。
+
+**8. 杀毒软件报 setup.bat / 启动脚本有风险**
+
+脚本只做「装依赖 + 复制配置模板 + 启动本地服务」，不联网上传任何数据。可以在杀毒软件里添加信任，或打开 cmd 手动执行里面的命令。
+
+**9. 想彻底重来**
+
+```bat
+rmdir /s /q .venv
+del .env
+del config\personal.json
+```
+
+然后重新双击 setup.bat。注意：这不会删除你的消息数据库（在 `runtime\` 里）。
+
+---
+
 ## 测试
 
 ```bash
@@ -489,6 +655,8 @@ pytest -q
 ```
 MessageHub/
 ├── 启动 MessageHub.bat          一键启动（自动探测 Python）
+├── setup.bat                    一键安装入口（双击后调起 setup.ps1）
+├── setup.ps1                    安装向导主逻辑（PowerShell，UTF-8 BOM）
 ├── config/
 │   ├── personal.example.json    个人配置模板
 │   └── personal.json            你的配置（gitignore）
@@ -529,6 +697,8 @@ MessageHub/
 
 Issue 和 PR 都欢迎。改规则引擎前先跑 `pytest -q`，96 项测试锁住了已知的所有判读案例。
 
+复现环境直接双击 `setup.bat`（或看上面的[快速开始（开发者）](#快速开始开发者)）。
+
 提交前装一下钩子，它会拦住误提交的密钥和聊天数据：
 
 ```bash
@@ -541,9 +711,10 @@ python scripts/install_hooks.py
 
 [MIT](LICENSE)
 
-第三方组件：
-- [Moect](https://github.com/ILoveScratch2/Moect) — 微信数据库解密，独立项目，本项目不包含其代码
-- [FastAPI](https://github.com/tiangolo/fastapi) / [Starlette](https://github.com/encode/starlette) — MIT
+第三方组件完整清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。主要依赖：
+
+- [Moect](https://github.com/ILoveScratch2/Moect) — 微信数据库解密，独立项目（GPL-3.0），本项目不包含其代码
+- [FastAPI](https://github.com/tiangolo/fastapi) / [Starlette](https://github.com/encode/starlette) — MIT / BSD
 - [zstandard](https://github.com/indygreg/python-zstandard) — BSD
 
 ---

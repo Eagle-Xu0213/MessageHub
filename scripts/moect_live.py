@@ -48,8 +48,17 @@ import zstandard
 BJ = timezone(timedelta(hours=8))
 # 路径全部自动推导，换机器不用改代码：
 #   ROOT         = 本脚本所在目录的上一级（仓库根）
-#   MOECT_EXE    环境变量 > 常见安装位置自动探测 > 报错提示
+#   MOECT_EXE    环境变量 > .env 中的 MOECT_EXE > 常见安装位置自动探测 > 报错提示
 ROOT = Path(os.environ.get("MESSAGEHUB_ROOT") or Path(__file__).resolve().parents[1])
+
+# 本脚本是独立进程，不会经过 FastAPI 侧的 dotenv 加载，自己读一次项目根 .env。
+# 不覆盖已存在的进程环境变量（真实环境变量优先），失败不影响运行。
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(str(ROOT / ".env"), override=False)
+except ImportError:
+    pass
 
 
 def _find_moect() -> Path:
@@ -65,7 +74,6 @@ def _find_moect() -> Path:
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Moect" / "Moect.exe",
         Path(os.environ.get("PROGRAMFILES", "")) / "Moect" / "Moect.exe",
         Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Moect" / "Moect.exe",
-        Path("D:/Applications/Moect/Moect.exe"),  # 作者本机习惯路径，最后兜底
     ]
     for c in candidates:
         try:
@@ -80,7 +88,8 @@ MOECT_EXE = _find_moect()
 DATA_DIR = ROOT / "runtime" / "moect_data"
 FALLBACK_ARCHIVES = Path(os.environ.get("LOCALAPPDATA", "")) / "Moect" / "archives"
 STATE_FILE = ROOT / "runtime" / "moect_live_state.json"
-INGEST_URL = "http://127.0.0.1:8000/api/live/ingest"
+INGEST_URL = "http://127.0.0.1:{port}/api/live/ingest".format(
+    port=os.environ.get("PORT", "8000").strip() or "8000")
 MSG_TABLE_RE = re.compile(r"^Msg_[0-9a-f]{32}$")
 SENDER_PREFIX = re.compile(r"^([^\s:\n]{1,64}):\n(.*)$", re.S)
 SAFE_CLEAN_PREFIX = (ROOT / "runtime" / "moect_data" / "archives").resolve()
@@ -874,9 +883,9 @@ def check_env() -> int:
     try:
         with urllib.request.urlopen(
                 INGEST_URL.replace("/ingest", "/status"), timeout=3) as r:
-            print(f"[服务   ] ✓ 127.0.0.1:8000 可访问（HTTP {r.status}）")
+            print(f"[服务   ] ✓ {INGEST_URL.replace('/api/live/ingest', '')} 可访问（HTTP {r.status}）")
     except Exception:
-        print("[服务   ] ✗ 连不上 127.0.0.1:8000")
+        print(f"[服务   ] ✗ 连不上 {INGEST_URL.replace('/api/live/ingest', '')}")
         print("          先启动服务：启动 MessageHub.bat")
         ok = False
 

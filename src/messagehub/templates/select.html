@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>检测范围管理 · MessageHub</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f5f7fa; color: #1f2733; line-height: 1.6;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .topnav { display: flex; gap: 14px; margin-bottom: 18px; font-size: 14px; }
+  .topnav a { color: #1668dc; text-decoration: none; }
+  .topnav a:hover { text-decoration: underline; }
+  .topnav a.cur { font-weight: 650; color: #1f2733; }
+  h1 { font-size: 25px; margin: 0 0 6px; }
+  .sub { color: #6b7785; font-size: 14px; margin-bottom: 24px; }
+  .card {
+    background: #fff; border: 1px solid #e3e8ef; border-radius: 12px;
+    padding: 20px 22px; margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(20,40,80,.04);
+  }
+  .card h2 { font-size: 16px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  input[type=text] {
+    border: 1px solid #d5dde8; border-radius: 7px; padding: 7px 10px;
+    font-size: 13px; font-family: inherit; outline: none; background: #fff; color: #1f2733;
+  }
+  input[type=text]:focus { border-color: #1668dc; }
+  #search { width: 260px; }
+  select {
+    border: 1px solid #d5dde8; border-radius: 7px; padding: 7px 10px;
+    font-size: 13px; font-family: inherit; background: #fff; color: #1f2733; outline: none;
+  }
+  button {
+    border: 1px solid #d5dde8; background: #fff; color: #26313f;
+    border-radius: 7px; padding: 7px 15px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { border-color: #1668dc; color: #1668dc; }
+  button.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  button.primary:hover { background: #1158bd; color: #fff; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .toolbar .spacer { flex: 1; }
+  .hint { font-size: 12.5px; color: #7a8698; }
+  .levelbar {
+    display: flex; gap: 8px; font-size: 12.5px; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .levelbar .chip {
+    border-radius: 20px; padding: 3px 12px; border: 1px solid #e3e8ef;
+    background: #f7f9fc; color: #4a5768; cursor: pointer; user-select: none;
+  }
+  .chip.on-work { background: #e8f4e9; border-color: #7cb87e; color: #2e7d32; font-weight: 600; }
+  .chip.on-watch { background: #fff7e0; border-color: #e6c26a; color: #9a6b00; font-weight: 600; }
+  .chip.on-excluded { background: #f1f3f5; border-color: #c3ccd6; color: #5c6774; font-weight: 600; }
+  #list { max-height: 560px; overflow-y: auto; border: 1px solid #e8edf4; border-radius: 9px; }
+  .conv {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px dashed #e6ebf2; font-size: 13.5px;
+  }
+  .conv:last-child { border-bottom: none; }
+  .conv:hover { background: #f7fafd; }
+  .conv .nm { flex: 1; min-width: 0; }
+  .conv .nm .n { font-weight: 600; word-break: break-all; }
+  .conv .nm .meta { font-size: 12px; color: #7a8698; margin-top: 1px; }
+  .conv .nm .aireason { font-size: 12px; color: #b06a00; margin-top: 2px; }
+  .conv .nm .aireason.off { color: #98a3b3; }
+  .kbadge {
+    display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11.5px;
+    background: #eef3fb; color: #34527d; margin-right: 4px; flex: none;
+  }
+  .kbadge.contact { background: #f3eefb; color: #6b3fa0; }
+  .seg { display: flex; gap: 4px; flex: none; }
+  .seg button {
+    padding: 4px 11px; font-size: 12px; border-radius: 6px; border: 1px solid #d5dde8;
+    background: #fff; color: #5c6774;
+  }
+  .seg button.on-work { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .seg button.on-watch { background: #b8860b; border-color: #b8860b; color: #fff; }
+  .seg button.on-excluded { background: #8a93a1; border-color: #8a93a1; color: #fff; }
+  .savebar {
+    display: flex; align-items: center; gap: 14px; margin-top: 14px;
+    position: sticky; bottom: 0; background: #fff; padding: 10px 4px;
+    border-top: 1px solid #e8edf4;
+  }
+  .savebar .summary { font-size: 13px; color: #4a5768; }
+  .savebar .summary b { color: #1668dc; }
+  .empty { color: #98a3b3; font-size: 13px; text-align: center; padding: 60px 0; }
+  .note {
+    background: #fffbe8; border: 1px solid #f5e2a8; border-radius: 9px;
+    padding: 13px 16px; font-size: 13px; color: #6b5518; margin-bottom: 18px;
+  }
+  .note b { color: #8a6110; }
+  .toast {
+    position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+    background: #2e7d32; color: #fff; padding: 10px 22px; border-radius: 8px;
+    font-size: 14px; display: none; z-index: 99; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  }
+  .toast.err { background: #c62828; }
+  .spin {
+    display: inline-block; width: 13px; height: 13px; border: 2px solid #fff;
+    border-top-color: transparent; border-radius: 50%; animation: r 0.8s linear infinite;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .legend { display: flex; gap: 16px; font-size: 12.5px; color: #6b7785; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .lv-work { background: #2e7d32; } .lv-watch { background: #b8860b; } .lv-excluded { background: #8a93a1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topnav">
+    <a href="/">🏠 工作台</a>
+    <a href="/brief">📋 每日简报</a>
+    <a href="/live">⚡ 实时消息接入</a>
+    <a href="/memories">🕰 去年今日</a>
+    <a href="/select" class="cur">🔍 检测范围</a>
+  </div>
+
+  <h1>🔍 检测范围管理</h1>
+  <div class="sub">勾选哪些群和联系人要被检测；没勾的一律不处理。分级决定检测的严格程度。</div>
+
+  <div class="note" id="snapWarn" style="display:none">
+    <b>未找到 Moect 解密快照。</b>清单为空。先按 README「Moect 集成」章节安装并跑通一次 Moect，再刷新本页。
+  </div>
+
+  <div class="card">
+    <h2>分级说明</h2>
+    <div class="legend">
+      <span><i class="lv-work"></i><b>工作</b>：发来的内容都按工作处理（私聊非噪声即报；群聊含通知）</span>
+      <span><i class="lv-watch"></i><b>混合</b>：工作生活都有（需带任务语义才报，防闲聊误报）</span>
+      <span><i class="lv-excluded"></i><b>不检测</b>：纯生活，完全不处理</span>
+    </div>
+    <div class="hint">AI 自动分级只是<b>预勾选</b>，结果仅供参考——保存前请复核，特别是工作/混合边界上的会话。AI 只接收消息统计特征与脱敏片段，不发送完整聊天记录。</div>
+  </div>
+
+  <div class="card">
+    <h2>会话清单 <span class="hint" id="countInfo"></span></h2>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜索群名 / 联系人…">
+      <select id="kindFilter">
+        <option value="all">全部类型</option>
+        <option value="group">仅群聊</option>
+        <option value="contact">仅联系人</option>
+      </select>
+      <div class="spacer"></div>
+      <button id="aiBtn">✦ AI 自动分级</button>
+      <span class="hint" id="llmInfo"></span>
+    </div>
+    <div class="levelbar" id="filterChips">
+      <span class="chip" data-lv="work">工作 <b id="cw">0</b></span>
+      <span class="chip" data-lv="watch">混合 <b id="cwatch">0</b></span>
+      <span class="chip" data-lv="excluded">不检测 <b id="cx">0</b></span>
+      <span class="chip" data-lv="unset">未分类 <b id="cu">0</b></span>
+    </div>
+    <div id="list"><div class="empty">加载中…</div></div>
+    <div class="savebar">
+      <span class="summary">已分级：<b id="sWork">0</b> 工作 · <b id="sWatch">0</b> 混合 · <b id="sExcl">0</b> 不检测</span>
+      <div class="spacer" style="flex:1"></div>
+      <span class="hint" id="dirtyHint"></span>
+      <button class="primary" id="saveBtn">保存并生效</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------------- 数据 ----------------
+let ALL = [];            // [{id,name,kind,msg_count,last_at,active_recent,level,reason,source}]
+let LEVELS = null;       // 当前 personal.json 分级
+let dirty = false;
+let aiBusy = false;
+
+const LV_KEY = { group: "groups", contact: "contacts" };
+const $ = (s) => document.querySelector(s);
+
+function toast(msg, isErr) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast" + (isErr ? " err" : "");
+  t.style.display = "block";
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.style.display = "none", 2800);
+}
+
+function markDirty() {
+  dirty = true;
+  $("#dirtyHint").textContent = "有未保存的修改";
+  refreshCounters();
+}
+
+// ---------------- 加载 ----------------
+async function load() {
+  try {
+    const r = await fetch("/api/scope/conversations");
+    const d = await r.json();
+    if (!d.snapshot_available) { $("#snapWarn").style.display = "block"; }
+    LEVELS = d.levels;
+    ALL = d.conversations.map(c => ({
+      ...c,
+      level: pickLevel(c.name, c.kind),
+      reason: "", source: "",
+    }));
+    render();
+    refreshCounters();
+  } catch (e) {
+    $("#list").innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+  }
+}
+
+function pickLevel(name, kind) {
+  const seg = LEVELS[LV_KEY[kind]];
+  for (const lv of ["work", "watch", "excluded"]) {
+    if (seg[lv].includes(name)) return lv;
+  }
+  return null;
+}
+
+// ---------------- 渲染 ----------------
+function currentFilters() {
+  return {
+    q: $("#search").value.trim().toLowerCase(),
+    kind: $("#kindFilter").value,
+  };
+}
+
+function visibleItems() {
+  const { q, kind } = currentFilters();
+  return ALL.filter(c =>
+    (kind === "all" || c.kind === kind) &&
+    (!q || c.name.toLowerCase().includes(q)));
+}
+
+function render() {
+  const items = visibleItems();
+  if (!ALL.length) {
+    $("#list").innerHTML = `<div class="empty">清单为空——没有找到快照或本库没有任何会话</div>`;
+    return;
+  }
+  if (!items.length) {
+    $("#list").innerHTML = `<div class="empty">没有匹配的会话</div>`;
+    return;
+  }
+  $("#list").innerHTML = items.map(c => {
+    const meta = [
+      c.kind === "group" ? "群聊" : "联系人",
+      c.msg_count ? `${c.msg_count} 条消息` : "本库无消息",
+      c.active_recent ? "近期活跃" : "",
+    ].filter(Boolean).join(" · ");
+    const aiLine = c.reason
+      ? `<div class="aireason${c.source === "none" ? " off" : ""}">✦ ${esc(c.reason)}${c.source === "llm" ? "（AI）" : c.source === "heuristic" ? "（规则推测）" : ""}</div>`
+      : "";
+    return `<div class="conv" data-id="${esc(c.id)}">
+      <span class="kbadge ${c.kind}">${c.kind === "group" ? "群" : "人"}</span>
+      <div class="nm"><div class="n">${esc(c.name)}</div>
+        <div class="meta">${meta}</div>${aiLine}</div>
+      <div class="seg">
+        <button data-lv="work" class="${c.level === "work" ? "on-work" : ""}" title="工作">工作</button>
+        <button data-lv="watch" class="${c.level === "watch" ? "on-watch" : ""}" title="混合">混合</button>
+        <button data-lv="excluded" class="${c.level === "excluded" ? "on-excluded" : ""}" title="不检测">不检</button>
+      </div>
+    </div>`;
+  }).join("");
+  $("#countInfo").textContent = `（显示 ${items.length} / 共 ${ALL.length}）`;
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+function refreshCounters() {
+  const n = { work: 0, watch: 0, excluded: 0, unset: 0 };
+  for (const c of ALL) n[c.level || "unset"]++;
+  $("#cw").textContent = n.work;
+  $("#cwatch").textContent = n.watch;
+  $("#cx").textContent = n.excluded;
+  $("#cu").textContent = n.unset;
+  $("#sWork").textContent = n.work;
+  $("#sWatch").textContent = n.watch;
+  $("#sExcl").textContent = n.excluded;
+  for (const chip of document.querySelectorAll("#filterChips .chip")) {
+    const lv = chip.dataset.lv;
+    chip.classList.toggle("on-" + lv, chip._active === true);
+    chip.style.display = n[lv] ? "" : "none";
+  }
+}
+
+// ---------------- 交互 ----------------
+$("#list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg button");
+  if (!btn) return;
+  const row = e.target.closest(".conv");
+  const c = ALL.find(x => x.id === row.dataset.id);
+  if (!c) return;
+  const lv = btn.dataset.lv;
+  c.level = (c.level === lv) ? null : lv;   // 再点一次取消
+  if (c.level === null && c.reason) { /* 保留 AI 理由 */ }
+  markDirty();
+  render();
+});
+
+$("#filterChips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  const lv = chip.dataset.lv;
+  // 再次点击取消筛选；否则筛选出该级别
+  const active = chip._active === true;
+  document.querySelectorAll("#filterChips .chip").forEach(x => x._active = false);
+  chip._active = !active;
+  const items = visibleItems().filter(c => (chip._active ? c.level === lv : true));
+  $("#list").innerHTML = items.length ? items.map(c => "").join("") || "" : "";
+  // 简化：筛选直接复用 render 的过滤逻辑——把 chip 状态并入
+  renderFiltered(lv, chip._active);
+});
+
+function renderFiltered(lv, active) {
+  // 在 visibleItems 基础上叠加级别筛选
+  const { q, kind } = currentFilters();
+  let items = ALL.filter(c =>
+    (kind === "all" || c.kind === kind) &&
+    (!q || c.name.toLowerCase().includes(q)));
+  if (active) items = items.filter(c => c.level === lv);
+  if (!items.length) {
+    $("#list").innerHTML = `<div class="empty">该分类下没有会话</div>`;
+    return;
+  }
+  $("#list").innerHTML = items.map(c => {
+    const meta = [c.kind === "group" ? "群聊" : "联系人",
+      c.msg_count ? `${c.msg_count} 条消息` : "本库无消息"].filter(Boolean).join(" · ");
+    const aiLine = c.reason ? `<div class="aireason">${esc(c.reason)}</div>` : "";
+    return `<div class="conv" data-id="${esc(c.id)}">
+      <span class="kbadge ${c.kind}">${c.kind === "group" ? "群" : "人"}</span>
+      <div class="nm"><div class="n">${esc(c.name)}</div><div class="meta">${meta}</div>${aiLine}</div>
+      <div class="seg">
+        <button data-lv="work" class="${c.level === "work" ? "on-work" : ""}">工作</button>
+        <button data-lv="watch" class="${c.level === "watch" ? "on-watch" : ""}">混合</button>
+        <button data-lv="excluded" class="${c.level === "excluded" ? "on-excluded" : ""}">不检</button>
+      </div></div>`;
+  }).join("");
+}
+
+$("#search").addEventListener("input", () => { clearChips(); render(); });
+$("#kindFilter").addEventListener("change", () => { clearChips(); render(); });
+
+function clearChips() {
+  document.querySelectorAll("#filterChips .chip").forEach(x => x._active = false);
+}
+
+$("#saveBtn").addEventListener("click", async () => {
+  const payload = { groups: { work: [], watch: [], excluded: [] },
+                    contacts: { work: [], watch: [], excluded: [] } };
+  for (const c of ALL) {
+    if (!c.level) continue;
+    payload[LV_KEY[c.kind]][c.level].push(c.name);
+  }
+  const btn = $("#saveBtn");
+  btn.disabled = true; btn.textContent = "保存中…";
+  try {
+    const r = await fetch("/api/scope/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "保存失败");
+    LEVELS = d.levels;
+    for (const c of ALL) c.level = pickLevel(c.name, c.kind);
+    dirty = false;
+    $("#dirtyHint").textContent = "";
+    toast("已保存，检测范围已生效（采集器下一轮生效）");
+    render(); refreshCounters();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = "保存并生效";
+  }
+});
+
+// ---------------- AI 自动分级 ----------------
+$("#aiBtn").addEventListener("click", async () => {
+  if (aiBusy) return;
+  aiBusy = true;
+  const btn = $("#aiBtn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin"></span>分析中…`;
+  try {
+    const names = ALL.map(c => ({ name: c.name, kind: c.kind }));
+    const r = await fetch("/api/scope/ai-presel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "AI 分析失败");
+    let applied = 0;
+    for (const c of ALL) {
+      const lv = d.levels[c.name];
+      if (lv && lv.level) {
+        c.level = lv.level;
+        c.reason = lv.reason || "";
+        c.source = lv.source || "";
+        applied++;
+      }
+    }
+    markDirty();
+    render(); refreshCounters();
+    toast(`AI 分级完成：${applied} 项预勾选（来源：${d.source === "llm" ? "AI 模型" : "本地规则推测"}）。请复核后保存。`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    aiBusy = false;
+    btn.disabled = false; btn.textContent = "✦ AI 自动分级";
+  }
+});
+
+// LLM 状态提示
+(async () => {
+  try {
+    const r = await fetch("/api/scope/llm-status");
+    const d = await r.json();
+    const el = $("#llmInfo");
+    if (!d.configured) {
+      el.textContent = "未配置 LLM，AI 分级将使用本地规则推测";
+    } else if (d.uses_public_service) {
+      el.textContent = "⚠ LLM 指向公共服务，将只用本地规则推测（隐私保护）";
+    } else {
+      el.textContent = `AI 就绪：${d.model || "已配置"}`;
+    }
+  } catch (_) { /* 忽略 */ }
+})();
+
+load();
+</script>
+</body>
+</html>

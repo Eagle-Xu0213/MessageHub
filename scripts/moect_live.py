@@ -521,6 +521,27 @@ def read_new_messages(snap: Path, watermark: int, limit: int,
     return msgs, int(cursor.get("max_ct") or watermark)
 
 
+def _private_whitelist() -> set:
+    """需要采集的私聊会话显示名集合（personal.json 的 contacts 分层）。
+
+    work + watch 层都要采集（excluded 层不采）；读不到配置时返回空集，
+    行为退化为「只采群聊」。每次调用都重读配置，页面改完保存后下一轮生效。
+    """
+    try:
+        data = json.loads((ROOT / "config" / "personal.json").read_text(
+            encoding="utf-8"))
+        contacts = data.get("contacts") or {}
+        names = set()
+        for lv in ("work", "watch"):
+            for v in contacts.get(lv) or []:
+                s = str(v).strip()
+                if s:
+                    names.add(s)
+        return names
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return set()
+
+
 def _iter_candidate_rows(snap: Path, watermark: int, cursor: dict | None,
                          groups_only: bool) -> tuple:
     """按确定性顺序遍历候选行，并给出精确的过滤统计。
@@ -529,11 +550,17 @@ def _iter_candidate_rows(snap: Path, watermark: int, cursor: dict | None,
     消息落库，必须用 local_id 作第二排序键才能稳定分页；跨 message_*.db 时再以
     表名做第三键。``cursor`` 是「排他」语义，因此同秒消息跨页不会被跳过。
 
+    私聊白名单（2026-11-18）：groups_only=False 时，只有 contacts 分层里
+    work/watch 级联系人的私聊会被放行（显示名匹配，采集桥与规则引擎同源）。
+
     返回 (生成器, names, stats)。生成器每项是完整消息 dict（含内部游标字段）。
     """
     names, db_maps = build_maps(snap)
     stats = {"scanned": 0, "filtered_non_text": 0, "filtered_too_long": 0,
              "filtered_empty": 0, "filtered_private": 0, "candidates": 0}
+    # 白名单在轮次开始时取一次：一轮之内配置不变是合理假设，
+    # 页面保存的改动下一轮（≤interval 秒后）生效
+    private_allow = _private_whitelist() if not groups_only else set()
 
     def gen():
         for db_path, (rid2wx, md5_2conv, tables) in db_maps.items():
@@ -545,10 +572,12 @@ def _iter_candidate_rows(snap: Path, watermark: int, cursor: dict | None,
                 conv = md5_2conv.get(t[4:])
                 if not conv:
                     continue
-                # 授权边界：默认只采集群聊（@chatroom），不读未授权私聊
-                if groups_only and not conv.endswith("@chatroom"):
-                    stats["filtered_private"] += 1
-                    continue
+                # 授权边界：群聊直接放行；私聊只放行 contacts 分层勾选的联系人
+                if not conv.endswith("@chatroom"):
+                    display = names.get(conv, conv)
+                    if display not in private_allow:
+                        stats["filtered_private"] += 1
+                        continue
                 sql = (f'SELECT local_id, server_id, local_type, real_sender_id, '
                        f'create_time, message_content, WCDB_CT_message_content '
                        f'FROM "{t}" WHERE create_time >= ?')
@@ -915,7 +944,9 @@ def main() -> int:
     ap.add_argument("--no-refresh", action="store_true", help="不触发 Moect 刷新，仅读现有快照")
     ap.add_argument("--keep-snapshots", action="store_true", help="不清理旧快照")
     ap.add_argument("--include-private", action="store_true",
-                    help="同时采集单聊（默认只采群聊，遵守不读未授权私聊边界）")
+                    help="按 personal.json contacts 分层采集私聊："
+                         "work/watch 级联系人放行，excluded 与未勾选不采。"
+                         "不勾任何联系人时等价于只采群聊")
     args = ap.parse_args()
     if args.check:
         return check_env()

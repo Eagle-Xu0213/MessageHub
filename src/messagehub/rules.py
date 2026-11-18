@@ -1,21 +1,29 @@
 """工作事件提取引擎（R1）：把群消息按已确认规则提取为结构化事件。
 
 规则设计：
-1. 群分三层（群名来自 config/personal.json，不在代码里硬编码）：
+1. 会话分两层（名字来自 config/personal.json，不在代码里硬编码）：
+   群聊三层：
    - WORK：明确的工作群 → 提取任务指派/@我/通知类事件
    - WATCH：混杂群 → 仅当「cue 我 + 任务语义」双条件满足才报
    - 其余群一律忽略
+   私聊三层（2026-11-18 新增，contacts 段）：
+   - WORK_CONTACTS：这个人发来即工作内容 → 非噪声即报（私聊里
+     几乎每条都是发给你的，没有「@我」可言，cue 判定不适用）
+   - WATCH_CONTACTS：工作生活混合 → 需任务语义（score>=1）才报
+   - 其余联系人一律忽略（默认保守：不勾选 = 不检测）
 2. 用户身份 cue 形态（来自 personal.json 的 identity 段）：
    @昵称 / @真名（群昵称可能带班级等前缀）/ 文本直呼短名
+   ——仅群聊使用；私聊不走 cue 判定
 3. 事件类型：assignment（指派给我）/ reply_needed（@我提问，需回复）/ notice（时间地点通知，与我个人无关也记）
 4. 噪声排除复用 work_brief 的规则：表情包、纯符号、"收到/好的"类应答、玩梗@（与 @12306 并列）
 
-未配置身份或群白名单时，extract_events 直接返回空——不知道「我是谁」
-和「哪些是工作群」，任何提取结果都是瞎猜。
+未配置身份或会话白名单时，extract_events 直接返回空——不知道「我是谁」
+和「哪些是工作会话」，任何提取结果都是瞎猜。
 
 输出事件 dict：
 {
   message_id, sent_at, conversation_name, sender_name, text,
+  channel,     # group | private（私聊判定链路新增）
   event_type,  # assignment | reply_needed | notice
   cue_type,    # at_me | direct_call | context_dialog | none
   deadline,    # 解析出的截止时间原文字串（可为 None）
@@ -34,6 +42,12 @@ from messagehub import personal
 WORK_GROUPS = personal.WORK_GROUPS
 WATCH_GROUPS = personal.WATCH_GROUPS
 EXCLUDED_GROUPS = personal.EXCLUDED_GROUPS
+
+# 私聊联系人分层（2026-11-18）：模块级引用保留兼容；判定走函数内动态读取，
+# 页面保存配置后调用 personal.reload() 即可生效，无需重启进程。
+WORK_CONTACTS = personal.WORK_CONTACTS
+WATCH_CONTACTS = personal.WATCH_CONTACTS
+EXCLUDED_CONTACTS = personal.EXCLUDED_CONTACTS
 
 # ------------------------- 用户 cue 形态 -------------------------
 
@@ -228,18 +242,62 @@ def extract_event(message: Dict[str, Any],
     返回事件 dict 或 None（非事件）。message 需含：
     id, sent_at, conversation_name, sender_name, text。
     group_messages（可选）：同群按时间升序的全部消息，供上下文指向判定。
+
+    会话分层判定顺序（第一层优先，同名冲突时取最严格级别）：
+    excluded > work/watch。群聊与私聊判定规则不同：
+    - 群聊：工作群宽松（通知也报）；混杂群必须 cue 我 + 任务语义
+    - 私聊：工作级联系人非噪声即报（私聊没有「@我」概念）；
+      混合级联系人需任务语义 >=1
     """
     group = (message.get("conversation_name") or "").strip()
     text = (message.get("text") or "").strip()
 
-    if not text or group in EXCLUDED_GROUPS:
+    if not text or group in personal.EXCLUDED_GROUPS:
         return None
     for p in _NOISE_RES:
         if p.match(text):
             return None
 
-    in_work = group in WORK_GROUPS
-    in_watch = group in WATCH_GROUPS
+    # ---- 私聊判定链（contacts 三级，动态读取以支持热更新） ----
+    # 私聊会话的 conversation_name = 联系人备注/昵称（采集桥同源映射）。
+    # 同一名字同时出现在 groups 与 contacts 时先按私聊处理（更少见、更具体）。
+    in_work_contact = group in personal.WORK_CONTACTS
+    in_watch_contact = group in personal.WATCH_CONTACTS
+    if in_work_contact or in_watch_contact:
+        if in_work_contact and in_watch_contact:
+            # 配置冲突：取更严格的 watch 语义，避免漏报误报之间摇摆
+            in_work_contact = False
+        score = work_score_of(text)
+        if in_work_contact:
+            # 这个人发来即工作：非噪声即报。无 cue 概念，按内容分类：
+            if _QUESTION.search(text) and score == 0:
+                event_type = "reply_needed"
+            elif score >= 1 or _NOTICE.search(text):
+                event_type = "assignment" if score >= 1 else "notice"
+            else:
+                # 无任务语义也不是通知——混合级内容（寒暄、生活）不报
+                return None
+        else:
+            # 混合级：可能有工作也可能闲聊，必须带任务语义
+            if score < 1:
+                return None
+            event_type = "assignment" if score >= 2 else "reply_needed"
+        return {
+            "message_id": message.get("id"),
+            "sent_at": message.get("sent_at"),
+            "conversation_name": group,
+            "sender_name": message.get("sender_name"),
+            "text": text,
+            "channel": "private",
+            "event_type": event_type,
+            "cue_type": "none",
+            "deadline": _extract_deadline(text),
+            "work_score": score,
+        }
+
+    # ---- 群聊判定链（groups 三级） ----
+    in_work = group in personal.WORK_GROUPS
+    in_watch = group in personal.WATCH_GROUPS
     if not in_work and not in_watch:
         return None
 
@@ -283,6 +341,7 @@ def extract_event(message: Dict[str, Any],
         "conversation_name": group,
         "sender_name": message.get("sender_name"),
         "text": text,
+        "channel": "group",
         "event_type": event_type,
         "cue_type": cue or ("context_dialog" if context_directed else "none"),
         "deadline": _extract_deadline(text),
@@ -300,7 +359,9 @@ def extract_events(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     自己发的东西不是给自己的待办（如 Agent2API 介绍、值班取消通知）。
     上下文指向判定需要同群消息窗口，按群分组后逐条传入。
     """
-    if not (personal.IDENTITY_CONFIGURED and (WORK_GROUPS or WATCH_GROUPS)):
+    if not (personal.IDENTITY_CONFIGURED
+            and (personal.WORK_GROUPS or personal.WATCH_GROUPS
+                 or personal.WORK_CONTACTS or personal.WATCH_CONTACTS)):
         return []
 
     by_group: Dict[str, List[Dict[str, Any]]] = {}

@@ -44,6 +44,14 @@ _DEFAULTS: Dict[str, Any] = {
         "watch": [],
         "excluded": [],
     },
+    # 私聊联系人分级（2026-11-18 新增）：工作=发来即工作内容；
+    # watch=工作生活混合（需任务语义才报）；excluded=纯生活不检测。
+    # 值为联系人「备注或昵称」（Moect 采集桥写入的 conversation_name 同源）。
+    "contacts": {
+        "work": [],
+        "watch": [],
+        "excluded": [],
+    },
     "aliases": {},
     "brief": {
         "persona": "一位大学生",
@@ -136,6 +144,15 @@ WORK_GROUPS: Set[str] = _as_set(_groups.get("work"))
 WATCH_GROUPS: Set[str] = _as_set(_groups.get("watch"))
 EXCLUDED_GROUPS: Set[str] = _as_set(_groups.get("excluded"))
 
+# ------------------------- 私聊联系人分层 -------------------------
+# 三级语义与群一致：work=发来即工作（非噪声即报）；watch=混合（需任务语义）；
+# excluded=纯生活（不检测）。空的 contacts 段 = 不检测任何私聊（默认保守）。
+
+_contacts = _CONFIG.get("contacts", {}) or {}
+WORK_CONTACTS: Set[str] = _as_set(_contacts.get("work"))
+WATCH_CONTACTS: Set[str] = _as_set(_contacts.get("watch"))
+EXCLUDED_CONTACTS: Set[str] = _as_set(_contacts.get("excluded"))
+
 # 群 ID → 可读群名（Moect 导出只带 chatroom id）
 CONVERSATION_ALIASES: Dict[str, str] = {
     str(k): str(v)
@@ -148,6 +165,18 @@ BRIEF_PERSONA: str = str(
 ).strip()
 
 
+def active_config_path() -> Path:
+    """返回当前生效的配置文件路径（写入保存时用）。
+
+    环境变量指向的路径优先（多套配置切换场景）；否则是 config/personal.json。
+    路径不一定存在——调用方需自行处理首次创建。
+    """
+    env_path = os.environ.get("MESSAGEHUB_PERSONAL_CONFIG")
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_CONFIG_PATH
+
+
 def reload() -> None:
     """重新读取配置（改完 personal.json 后无需重启进程，调用本函数即可）。
 
@@ -157,6 +186,7 @@ def reload() -> None:
     """
     global _CONFIG, MY_NICKNAMES, MY_REALNAME, MY_SHORTNAME, MY_SENDER_NAMES
     global IDENTITY_CONFIGURED, WORK_GROUPS, WATCH_GROUPS, EXCLUDED_GROUPS
+    global WORK_CONTACTS, WATCH_CONTACTS, EXCLUDED_CONTACTS
     global CONVERSATION_ALIASES, BRIEF_PERSONA
 
     _CONFIG = _load()
@@ -171,6 +201,12 @@ def reload() -> None:
     WORK_GROUPS = _as_set(_groups.get("work"))
     WATCH_GROUPS = _as_set(_groups.get("watch"))
     EXCLUDED_GROUPS = _as_set(_groups.get("excluded"))
+
+    _contacts = _CONFIG.get("contacts", {}) or {}
+    WORK_CONTACTS = _as_set(_contacts.get("work"))
+    WATCH_CONTACTS = _as_set(_contacts.get("watch"))
+    EXCLUDED_CONTACTS = _as_set(_contacts.get("excluded"))
+
     CONVERSATION_ALIASES = {
         str(k): str(v) for k, v in (_CONFIG.get("aliases") or {}).items()
     }

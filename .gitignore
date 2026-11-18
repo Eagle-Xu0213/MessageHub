@@ -61,6 +61,7 @@ reports/*
 
 # 个人身份与工作群配置（真名/昵称/群名白名单）。仓库里只保留 .example.json
 config/personal.json
+config/personal.json.bak
 
 # 内部开发文档：含真实数据统计与个人信息，仅本地留存
 BASELINE.md

@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+runtime/*.db
+
+# Test/pytest leftovers
+pytest-of-*/
+tmpp*/
+runtime/test_*/
+runtime/*.jsonl
+runtime/wt/
+runtime/watch_test/
+runtime/test_auto/
+runtime/test_tmp/
+
+# Automation logs
+runtime/*.log
+
+# Local decrypted chat data / keys (sensitive, never commit)
+runtime/moect_data/
+runtime/decrypted/
+runtime/moect_live_state.json
+runtime/db_bridge_state.json
+runtime/live_config.json
+
+# Imports (user data)
+imports/*
+!imports/.gitkeep
+
+# 历史归档与本机杂项（不进版本库，本地仍可查）
+_archive/
+nul
+
+# WorkBuddy 本地记忆（含历史 API 配置，绝不入库）
+.workbuddy/
+
+# 含真实聊天正文的离线产物（本地可用，绝不入库）
+reports/去年今日_*.html
+reports/ai_summary_*.json
+# reports 整体不进版本库：记忆册、群聊分析、审计复盘都含真实群名/人名/聊天正文。
+# 这些是本地开发记录，不属于开源项目内容。
+reports/*
+
+# 个人身份与工作群配置（真名/昵称/群名白名单）。仓库里只保留 .example.json
+config/personal.json
+
+# 内部开发文档：含真实数据统计与个人信息，仅本地留存
+BASELINE.md
+DEVELOPMENT_STATUS.md
+RULES.md
+
+# pytest 隔离目录（测试库与临时目录，绝不碰生产库）
+runtime/pytest_tmp/
+runtime/pytest_db/
+
+# 审计/恢复产生的数据库副本与探测产物
+runtime/messagehub.db.*
+runtime/uia_*.json
+runtime/live_page.js
+runtime/*.json
+
+# 外部工具反复生成的截图/进度残留（11-15 发现 src/1/，11-18 又出现根级 1/）
+/1/
+src/1/
+
+# .env（API key / SMTP 授权码）。含真实凭据，永不入库。
+# 注意：本项目已用 orphan 分支重建历史，旧的含 key 提交不再存在于仓库中。
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

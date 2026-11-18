@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run tests
+        run: pytest -q
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check for hardcoded secrets and personal paths
+        run: |
+          set -e
+          echo "扫描硬编码的绝对路径与凭据..."
+          # 排除本地产物目录（它们本来就不入库，但本地跑 lint 时不该误报）
+          EXCL='--exclude-dir=.git --exclude-dir=.venv --exclude-dir=__pycache__ --exclude-dir=runtime --exclude-dir=imports --exclude-dir=_archive --exclude-dir=.workbuddy --exclude-dir=reports --exclude-dir=node_modules'
+
+          echo "→ Windows 用户目录硬编码"
+          if grep -rn $EXCL "C:/Users/[A-Za-z]" --include="*.py" --include="*.bat" \
+               --include="*.vbs" --include="*.md" . ; then
+            echo "::error::发现硬编码的 Windows 用户路径，请改为自动探测"
+            exit 1
+          fi
+
+          echo "→ 真实 API Key 形态"
+          if grep -rnE $EXCL "sk-[A-Za-z0-9]{20,}|ak-f[A-Za-z0-9]{20,}" \
+               --include="*.py" --include="*.json" --include="*.md" . ; then
+            echo "::error::发现疑似真实 API Key"
+            exit 1
+          fi
+
+          echo "→ 微信账号 ID"
+          # 真实 wxid 是 4 + 随机 14~16 位小写字母数字；测试里的 wxid_private0001 这类假数据不匹配
+          if grep -rnE $EXCL "wxid_[0-9a-z]{14,18}\b" --include="*.py" --include="*.md" . \
+               | grep -v "private0001"; then
+            echo "::error::发现真实微信 ID，疑似聊天数据"
+            exit 1
+          fi
+
+          echo "✓ 未发现敏感信息"
+
+      - name: Compile check
+        run: |
+          python -m compileall -q src scripts tests
+          echo "✓ 语法检查通过"

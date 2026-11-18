@@ -1,0 +1,31 @@
+{
+  "_comment": "复制本文件为 personal.json 后填写。personal.json 已被 git 忽略，不会上传。",
+  "_说明": [
+    "identity.nicknames: 你的微信昵称（可以有多个，群里的 @ 会用这些匹配）",
+    "identity.real_name: 你的真实姓名，用于匹配「@班级+姓名」这类群昵称",
+    "identity.short_name: 别人直呼你时的简称（如姓名去掉姓），留空则不启用直呼匹配",
+    "identity.sender_names: 你自己发言时显示的昵称，用于判断「我是否已回复」",
+    "groups.work: 明确的工作群名，会提取指派/@我/通知类事件",
+    "groups.watch: 混杂群名，仅当「cue 我 + 有任务语义」双条件满足才报",
+    "groups.excluded: 明确排除的群，即使匹配规则也不处理",
+    "aliases: 群 ID 到可读群名的映射，键是不带 @chatroom 的数字 ID",
+    "brief.persona: 生成晨报时 LLM 的人设描述，例如「一位大学生」"
+  ],
+  "identity": {
+    "nicknames": ["你的微信昵称"],
+    "real_name": "你的真名",
+    "short_name": "你的简称",
+    "sender_names": ["你的微信昵称"]
+  },
+  "groups": {
+    "work": ["示例工作群A", "示例工作群B"],
+    "watch": ["示例混杂群"],
+    "excluded": ["示例排除群"]
+  },
+  "aliases": {
+    "12345678": "示例群名"
+  },
+  "brief": {
+    "persona": "一位大学生"
+  }
+}

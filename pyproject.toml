@@ -1,0 +1,67 @@
+[project]
+name = "messagehub"
+version = "0.1.0"
+description = "本地优先的微信工作消息中枢：群消息 → 待办清单，数据不出本机"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "MessageHub Contributors" }]
+keywords = ["wechat", "chat", "task-extraction", "local-first", "privacy", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Chat",
+    "Topic :: Office/Business",
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "jinja2>=3.1.2",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "zstandard>=0.22.0",
+    "httpx>=0.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Eagle-Xu0213/MessageHub"
+Repository = "https://github.com/Eagle-Xu0213/MessageHub"
+Issues = "https://github.com/Eagle-Xu0213/MessageHub/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+# 模板必须随包分发，否则 pip 安装后页面 500
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+messagehub = ["templates/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Windows 下系统临时目录可能被拒访问（WinError 5），固定到项目内可写目录
+addopts = "--basetemp=runtime/pytest_tmp"
+filterwarnings = [
+    # starlette TestClient 的 httpx 弃用提示，不影响功能
+    "ignore::DeprecationWarning:starlette.*",
+]

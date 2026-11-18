@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>MessageHub — 工作消息中枢</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #f5f7fa; color: #333; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { font-size: 24px; color: #1a73e8; }
+        .stats { display: flex; gap: 20px; margin-top: 15px; }
+        .stat-card { background: #e8f0fe; padding: 15px 25px; border-radius: 6px; min-width: 150px; }
+        .stat-card h3 { font-size: 28px; color: #1a73e8; margin-bottom: 5px; }
+        .stat-card p { font-size: 14px; color: #5f6368; }
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .panel h2 { font-size: 18px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #e8f0fe; }
+        .task-list { list-style: none; }
+        .task-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .task-item:last-child { border-bottom: none; }
+        .task-info { flex: 1; }
+        .task-title { font-weight: 600; margin-bottom: 4px; }
+        .task-meta { font-size: 12px; color: #888; }
+        .task-actions { display: flex; gap: 8px; }
+        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: #1a73e8; color: #fff; }
+        .btn-success { background: #34a853; color: #fff; }
+        .btn-danger { background: #ea4335; color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .upload-area { border: 2px dashed #ddd; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s; }
+        .upload-area:hover { border-color: #1a73e8; background: #f8fafc; }
+        .upload-area input[type="file"] { display: none; }
+        .conversations { max-height: 300px; overflow-y: auto; }
+        .conv-item { padding: 8px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .conv-count { float: right; background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-completed { background: #d4edda; color: #155724; }
+        footer { margin-top: 30px; text-align: center; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📮 MessageHub — 工作消息中枢</h1>
+            <nav style="margin:10px 0 4px;font-size:14px;display:flex;gap:16px">
+                <a href="/brief" style="color:#1668dc;text-decoration:none">📋 每日简报</a>
+                <a href="/live" style="color:#1668dc;text-decoration:none">⚡ 实时消息接入</a>
+                <a href="/memories" style="color:#1668dc;text-decoration:none">🕰 去年今日</a>
+            </nav>
+            <div class="stats">
+                <div class="stat-card">
+                    <h3 id="total-messages">{{ total_messages }}</h3>
+                    <p>已处理消息</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="pending-tasks">{{ pending_tasks }}</h3>
+                    <p>待处理任务</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="completed-tasks">{{ completed_tasks }}</h3>
+                    <p>已完成任务</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="today-messages">{{ today_messages }}</h3>
+                    <p>今日消息</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="capture-status">
+                        {% if capture_errors > 0 %}⚠ {{ capture_errors }}{% else %}✓{% endif %}
+                    </h3>
+                    <p>采集状态{% if capture_errors > 0 %}（异常）{% else %}正常{% endif %}</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <div class="panel">
+                <h2>🚀 导入聊天记录</h2>
+                <div class="upload-area" id="upload-area">
+                    <p>拖拽 JSONL/JSON/CSV/TXT 文件到此处，或点击选择文件</p>
+                    <input type="file" id="file-input" accept=".jsonl,.json,.csv,.txt">
+                </div>
+                <div id="import-status" style="margin-top: 15px;"></div>
+            </div>
+
+            <div class="panel">
+                <h2>📊 采集健康状态</h2>
+                <div id="capture-panel">
+                    <p>最近采集轮次状态：</p>
+                    <ul style="list-style:none; margin-top:10px;">
+                        {% for status, count in capture_stats.items() %}
+                        <li style="padding:4px 0;">
+                            <span class="badge {% if status == 'error' or status == 'partial' %}badge-pending{% else %}badge-completed{% endif %}">
+                                {{ status }}
+                            </span>
+                            × {{ count }}
+                        </li>
+                        {% else %}
+                        <li style="color:#888;">尚无采集记录</li>
+                        {% endfor %}
+                    </ul>
+                    <p style="margin-top:10px; font-size:13px; color:#5f6368;">
+                        自动监测目录：<code>imports/</code>（将 Moect / QQ Chat Exporter 导出文件放入此处，
+                        或通过页面上传，系统自动导入、去重并提取任务）
+                    </p>
+                    <button class="btn btn-primary" onclick="triggerScan()">立即扫描 imports/ 目录</button>
+                    <div id="scan-result" style="margin-top:10px;"></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>📋 今日摘要 / 群列表</h2>
+                <div class="conversations" id="conversations-list">
+                    {% for name, cnt in today_by_group %}
+                    <div class="conv-item">
+                        {{ name }} <span class="conv-count">{{ cnt }} 条</span>
+                    </div>
+                    {% else %}
+                    <div class="conv-item" style="color:#888;">今天还没有新消息</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="panel" style="grid-column: 1 / -1;">
+                <h2>🎯 待我处理 / 任务列表</h2>
+                <p style="font-size:13px;color:#5f6368;margin-bottom:10px;">
+                    任务提取已升级为「每日简报」——按确认过的规则从工作群提取事件、自动检测你是否已回复。
+                    <a href="/brief" style="color:#1a73e8;">打开每日简报 →</a>
+                    （下方的旧版任务列表保留兼容，规则提取较宽泛，以简报为准）
+                </p>
+                <ul class="task-list" id="task-list">
+                    <!-- 动态加载 -->
+                    <li class="task-item" style="color: #888;">暂无任务（导入消息后自动提取）</li>
+                </ul>
+            </div>
+        </div>
+
+        <footer>
+            <p>MessageHub v0.1.0 | 本地 Web 应用 · 数据仅存储在本地 · 监听 127.0.0.1:8000</p>
+        </footer>
+    </div>
+
+    <script>
+        // 上传处理
+        document.getElementById('upload-area').addEventListener('click', () => {
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', handleFileUpload);
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const statusEl = document.getElementById('import-status');
+            statusEl.innerHTML = '⏳ 导入中...';
+
+            try {
+                const res = await fetch('/api/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                statusEl.innerHTML = `✅ 导入完成：${data.inserted} 条新消息，${data.duplicate} 条重复`;
+                
+                // 刷新统计
+                location.reload();
+            } catch (err) {
+                statusEl.innerHTML = `❌ 导入失败：${err.message}`;
+            }
+        }
+
+        // 加载任务列表
+        async function loadTasks() {
+            const res = await fetch('/api/tasks');
+            const data = await res.json();
+            
+            const listEl = document.getElementById('task-list');
+            if (data.tasks.length === 0) {
+                listEl.innerHTML = '<li class="task-item" style="color:#888;">暂无任务（导入消息后自动提取）</li>';
+                return;
+            }
+
+            listEl.innerHTML = data.tasks.map(task => `
+                <li class="task-item">
+                    <div class="task-info">
+                        <div class="task-title">${escapeHtml(task.title)}</div>
+                        <div class="task-meta">
+                            ${task.category || '待分类'} · 
+                            ${task.deadline ? '截止：' + task.deadline : '无截止时间'} · 
+                            ${task.my_role || '负责人待确认'}
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        <button class="btn btn-success" onclick="completeTask(${task.id})">✓</button>
+                        <button class="btn btn-danger" onclick="deleteTask(${task.id})">×</button>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        async function completeTask(id) {
+            await fetch(`/api/tasks/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: 'completed'})
+            });
+            loadTasks();
+            location.reload();
+        }
+
+        async function deleteTask(id) {
+            if (!confirm('确定删除此任务？')) return;
+            await fetch(`/api/tasks/${id}`, {method: 'DELETE'});
+            loadTasks();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 初始化
+        loadTasks();
+
+        async function triggerScan() {
+            const el = document.getElementById('scan-result');
+            el.innerHTML = '⏳ 扫描中...';
+            try {
+                const res = await fetch('/api/scan', {method: 'POST'});
+                const data = await res.json();
+                el.innerHTML = `✅ 新增 ${data.new} 条消息，合并 ${data.tasks_merged} 个重复任务，状态：${data.status}`;
+                location.reload();
+            } catch (e) {
+                el.innerHTML = `❌ 扫描失败：${e.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

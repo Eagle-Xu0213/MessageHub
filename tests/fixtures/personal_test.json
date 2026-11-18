@@ -1,0 +1,21 @@
+{
+  "_comment": "pytest 专用的虚构配置：身份与群名全部为假数据，不含任何真实个人信息。",
+  "identity": {
+    "nicknames": ["测试昵称", "另一个昵称"],
+    "real_name": "张三",
+    "short_name": "张三",
+    "short_name_exclusions": ["会", "园"],
+    "sender_names": ["测试昵称"]
+  },
+  "groups": {
+    "work": ["工作群甲", "工作群乙", "工作群丙"],
+    "watch": ["混杂群甲", "混杂群乙"],
+    "excluded": ["排除群甲", "排除群乙"]
+  },
+  "aliases": {
+    "10001": "混杂群甲"
+  },
+  "brief": {
+    "persona": "一位大学生"
+  }
+}

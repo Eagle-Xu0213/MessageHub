@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
+import anyio
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse
 from jinja2 import Environment, FileSystemLoader
@@ -202,9 +203,14 @@ async def summarize_memories(request: MemorySummarizeRequest):
         except Exception:
             pass
 
-    # 调用 LLM 生成摘要（provider 内部已含降级，永不返回 None）
+    # 调用 LLM 生成摘要（provider 内部已含降级，永不返回 None）。
+    # 必须放线程池：summarize_memories 内部 chat_json 走降级链
+    # （4 端点 × timeout 90s × 3 轮），同步跑在 async 里会卡死事件循环
+    # 数分钟，期间 /api/health、采集 ingest 等全部请求排队超时
+    # （2026-11-19 事故复盘，与 brief.py 并发注意同规则）。
     llm = LLMProvider.from_env()
-    summary = llm.summarize_memories(messages, conversation_name, request.date)
+    summary = await anyio.to_thread.run_sync(
+        lambda: llm.summarize_memories(messages, conversation_name, request.date))
     degraded = bool(summary.get("degraded")) if summary else True
 
     # 回写缓存，供下次与离线报告复用

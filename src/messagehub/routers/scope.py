@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import anyio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from jinja2 import Environment, FileSystemLoader
@@ -452,8 +453,11 @@ async def ai_presel(payload: PreselRequest):
         from messagehub.llm.provider import LLMProvider
         llm = LLMProvider.from_env()
         if llm.enabled:
-            data = llm.chat_json(_build_presel_prompt(digests),
-                                 timeout=90, retries=1)
+            # 必须放线程池：chat_json(timeout=90) 同步跑在 async 里会
+            # 卡死事件循环，拖垮全服务（2026-11-19 事故，规则同 brief.py）
+            prompt = _build_presel_prompt(digests)
+            data = await anyio.to_thread.run_sync(
+                lambda: llm.chat_json(prompt, timeout=90, retries=1))
             if data and isinstance(data.get("levels"), list):
                 for it in data["levels"]:
                     n = (it.get("name") or "").strip()

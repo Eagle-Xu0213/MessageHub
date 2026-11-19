@@ -161,6 +161,25 @@ winget install Moect
 
 之后每天的使用就是：**双击启动 → 看简报 → 干活**。
 
+### 第 8 步（可选）：开机自启，开机后零操作
+
+双击 `scripts\install_autostart.bat` 即安装：登录 Windows 后自动静默启动**采集器 + 网页服务 + 简报调度器**，简报有实质内容会自动发到配置的邮箱（见 `.env` 的 SMTP 段），全程无需任何手动操作。
+
+取消自启：
+
+```bat
+scripts\install_autostart.bat uninstall
+```
+
+> 原理：往**当前用户**的注册表 Run 键（`HKCU\...\CurrentVersion\Run`）写一条 `wscript.exe autostart_silent.vbs`，不需要管理员权限。启动器是幂等的——服务和采集器已在运行时（端口占用 / 单实例锁）自动退出，重复双击「启动 MessageHub.bat」也不会起两份。
+>
+> 如果 `install_autostart.bat` 在某些终端里因中文编码乱码执行失败，直接用 PowerShell 手动安装（等效）：
+>
+> ```powershell
+> $VBS = "$PWD\scripts\autostart_silent.vbs"   # 在项目根目录运行
+> New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "MessageHub" -PropertyType String -Value "wscript.exe `"$VBS`"" -Force | Out-Null
+> ```
+
 ---
 
 ## 快速开始（开发者）
@@ -612,6 +631,20 @@ del config\personal.json
 
 然后重新双击 setup.bat。注意：这不会删除你的消息数据库（在 `runtime\` 里）。
 
+**10. 点了「去年今日」的 AI 摘要或「检测范围」的 AI 分级后，整个网页卡死**
+
+v0.1.0 及更早版本的 bug：这两个接口在请求线程里同步调 LLM（超时重试链最长十几分钟），期间所有请求（包括采集入库）全部排队超时。已在 2026-11-19 修复（三处调用挪进线程池）。如果你还在旧版本，`git pull` 后重启服务即可。
+
+**11. 开机自启没生效 / 想取消**
+
+验证是否安装成功（PowerShell）：
+
+```powershell
+(Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run").MessageHub
+```
+
+输出为空 = 没装上，按[第 8 步](#第-8-步可选开机自启开机后零操作)重装。取消：`scripts\install_autostart.bat uninstall`，或直接删除上面那个注册表值。
+
 ---
 
 ## 测试
@@ -620,7 +653,7 @@ del config\personal.json
 pytest -q
 ```
 
-96 项测试，全部隔离在临时库，**绝不碰生产数据**。
+110 项测试，全部隔离在临时库，**绝不碰生产数据**。
 
 测试用 `tests/fixtures/personal_test.json` 这套虚构身份（真名「张三」、群名「工作群甲」），不读你的 `config/personal.json`。所以测试结果不会随个人配置漂移，别人 clone 下来直接能跑。
 
@@ -691,7 +724,7 @@ MessageHub/
 │   ├── build_memories_report.py 生成离线「去年今日」HTML
 │   ├── install_hooks.py         安装 pre-commit 钩子
 │   └── install_autostart.bat    开机自启安装
-├── tests/                       96 项测试
+├── tests/                       110 项测试
 ├── imports/                     你的导出文件（gitignore）
 └── runtime/                     数据库 / 日志 / 快照（gitignore）
 ```
@@ -700,7 +733,7 @@ MessageHub/
 
 ## 贡献
 
-Issue 和 PR 都欢迎。改规则引擎前先跑 `pytest -q`，96 项测试锁住了已知的所有判读案例。
+Issue 和 PR 都欢迎。改规则引擎前先跑 `pytest -q`，110 项测试锁住了已知的所有判读案例。
 
 复现环境直接双击 `setup.bat`（或看上面的[快速开始（开发者）](#快速开始开发者)）。
 

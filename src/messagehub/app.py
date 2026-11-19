@@ -233,11 +233,16 @@ async def trigger_scan():
     if not WATCH_DIR.exists():
         WATCH_DIR.mkdir(parents=True, exist_ok=True)
     result = scan_directory(str(DB_PATH), str(WATCH_DIR))
-    # 扫描后自动运行规则提取（LLM 仅在配置后启用）
+    # 扫描后自动运行规则提取（LLM 仅在配置后启用）。
+    # 线程池执行：run_extraction 全表扫描 + 每条可能同步调 LLM（15s/条），
+    # 在 async 里跑会卡死事件循环（2026-11-19 事故，规则同 brief.py）
+    import anyio
     from messagehub.llm.provider import LLMProvider
     from messagehub.pipeline.extract import run_extraction
     llm = LLMProvider.from_env()
-    ext = run_extraction(str(DB_PATH), llm=llm if llm.enabled else None)
+    _llm = llm if llm.enabled else None
+    ext = await anyio.to_thread.run_sync(
+        lambda: run_extraction(str(DB_PATH), llm=_llm))
     return JSONResponse({
         "status": result["status"],
         "new": result["new"],

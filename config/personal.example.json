@@ -8,6 +8,9 @@
     "groups.work: 明确的工作群名，会提取指派/@我/通知类事件",
     "groups.watch: 混杂群名，仅当「cue 我 + 有任务语义」双条件满足才报",
     "groups.excluded: 明确排除的群，即使匹配规则也不处理",
+    "contacts.work: 工作级联系人（备注/昵称），TA 的私聊非噪声即报",
+    "contacts.watch: 混合级联系人，私聊需带任务语义才报",
+    "contacts.excluded: 不检测的联系人；未列出的联系人私聊一律不采集",
     "aliases: 群 ID 到可读群名的映射，键是不带 @chatroom 的数字 ID",
     "brief.persona: 生成晨报时 LLM 的人设描述，例如「一位大学生」"
   ],
@@ -21,6 +24,11 @@
     "work": ["示例工作群A", "示例工作群B"],
     "watch": ["示例混杂群"],
     "excluded": ["示例排除群"]
+  },
+  "contacts": {
+    "work": ["示例工作联系人"],
+    "watch": ["示例混合联系人"],
+    "excluded": []
   },
   "aliases": {
     "12345678": "示例群名"

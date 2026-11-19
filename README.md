@@ -415,6 +415,9 @@ curl -X POST http://127.0.0.1:8000/api/live/ingest \
 | `groups.work` | 工作群名单，提取指派 / @我 / 通知 |
 | `groups.watch` | 混杂群，必须「cue 我 + 有任务语义」双条件才报 |
 | `groups.excluded` | 明确排除的群，规则不读 |
+| `contacts.work` | 工作级联系人（备注/昵称），TA 的私聊非噪声即报 |
+| `contacts.watch` | 混合级联系人，私聊需带任务语义才报 |
+| `contacts.excluded` | 不检测的联系人；**未列出的联系人私聊一律不采集** |
 | `aliases` | 群 ID → 可读群名（Moect 导出只带 chatroom id） |
 | `brief.persona` | 生成简报时 LLM 的人设描述 |
 
@@ -425,7 +428,7 @@ curl -X POST http://127.0.0.1:8000/api/live/ingest \
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 任意 OpenAI 兼容接口。不配则降级本地规则 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `BRIEF_TO` | 简报邮件推送，可选 |
 | `MOECT_EXE` | Moect.exe 路径，可选（有自动探测） |
-| `HOST` / `PORT` | 监听地址，默认 `127.0.0.1:8000` |
+| `HOST` / `PORT` | `PORT` 是**采集器推送目标端口**，需与实际服务端口一致；网页服务端口由启动脚本决定（见下） |
 
 LLM 降级链：多模型重试 → JSON 稳健解析 → 本地规则摘要。**任何一环失败都不影响主流程**，永远有输出，不会假装「今天没有工作信息」。
 
@@ -587,7 +590,7 @@ GET  /api/messages/search?q=关键词             全文检索
 netstat -ano | findstr :8000
 ```
 
-不想折腾就改端口：用记事本打开 `.env`，把 `PORT=8000` 改成 `PORT=8001`，重新启动。
+不想折腾就换个端口跑：用记事本打开「启动 MessageHub.bat」，把里面所有的 `8000` 改成 `8001`（共 5 处，网页地址与启动命令都要改），保存后重新双击。同时把 `.env` 里的 `PORT=8001` 也改掉——采集器按它决定推送目标。
 
 **7. Moect 找不到 / 快照找不到 / 密钥解不开**
 

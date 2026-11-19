@@ -11,7 +11,12 @@ from messagehub.config import DB_PATH
 
 
 def get_db() -> sqlite3.Connection:
-    """简单 SQLite 连接。"""
+    """简单 SQLite 连接。
+
+    全新 clone 后 runtime/ 目录不存在（gitignore），SQLite 无法在
+    缺失的目录里建库——首次启动直接 OperationalError。这里兜底自建。
+    """
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn

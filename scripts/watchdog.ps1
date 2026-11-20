@@ -4,12 +4,14 @@
 # "MessageHubWatchdog" scheduled task at logon + every 5 minutes.
 #
 # Snapshot refresh is handled by "MessageHubHeadless" task
-# (system Python, moect_headless.py --loop), completely separate.
+# (system Python, moect_headless.py --once), completely separate.
 
 $ErrorActionPreference = "SilentlyContinue"
-$project = "D:\Projects\MessageHub"
-$python  = "$project\.venv\Scripts\python.exe"
-$log     = "$project\runtime\watchdog.log"
+# Derive project root from this script's own location so the project can be
+# cloned to any directory (no hardcoded author-machine paths).
+$project = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$python  = Join-Path $project ".venv\Scripts\python.exe"
+$log     = Join-Path $project "runtime\watchdog.log"
 
 function Test-Port($port) {
     $c = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen -ErrorAction SilentlyContinue

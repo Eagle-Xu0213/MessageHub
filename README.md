@@ -10,9 +10,9 @@
 
 > ### 🤖 交给 AI 安装
 >
-> 不想手动装？把这个仓库链接直接发给你的 AI 助手（Claude、ChatGPT、Cursor、WorkBuddy 等）并说一句「帮我安装」，即可完成全部安装配置。
+> 不想手动装？把这个仓库链接直接发给你的 AI 助手（Claude、ChatGPT、Cursor、WorkBuddy 等）并说一句「帮我安装」。
 >
-> AI 助手会自动读取仓库根目录的 **[AGENTS.md](AGENTS.md)**——那是为本项目专门写的 AI 安装手册：先问清你的身份配置，再按步执行、逐步验收，失败有对应排错表。人也可以照着它手动装。
+> AI 助手会自动读取仓库根目录的 **[AGENTS.md](AGENTS.md)**——那是为本项目专门写的 AI 安装手册：只问你 **5 个关于你自己的问题**（微信昵称、真名、工作群名等），其余全部由它执行并逐步验收，失败有对应排错表。你不需要懂命令行。人也可以照着它手动装。
 >
 > 喜欢自己动手 → 直接看下面的[零基础安装](#零基础安装windows从零开始)。
 
@@ -173,17 +173,17 @@ setup.bat 会自动打开记事本，编辑 `config\personal.json`，把里面�
 
 > ⚠️ **不填会怎样**：软件能启动、能导入历史消息，但**不会生成任何待办**——因为它不知道你是谁、哪些群算工作群。这是「简报是空的」的第一大原因。
 
-### 第 6 步（可选）：要用微信实时采集，配置 Moect
+### 第 6 步：要用微信实时采集，运行一条安装命令（PowerShell）
 
-setup.bat 已经问过你了——回答 `y` 会装好 Moect。跳过或当时选了 `n` 的话，之后随时可以补装：
+登录微信桌面版并保持运行，然后在项目目录打开 PowerShell，粘贴这一条：
 
-```bat
-winget install Moect
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
 ```
 
-装完后先**登录微信桌面版并保持运行**，确认 Moect 能解密你的微信数据。注意 headless 模式（推荐）还需要一份 Moect 的 GPL 源码并配置路径——详见 [Moect 集成](#moect-集成微信消息来源) 章节，这里配置不对，后面采集就是空的。
+它会自动完成三件事：下载 Moect 的 GPL 源码（独立开源项目，不装 Moect 图形界面）、给系统 Python 装好快照刷新所需的几个小依赖、注册两个静默运行的 Windows 计划任务（每 5 分钟刷新快照 + 保活服务）。**路径自动识别，clone 到任何目录都能用**，不需要管理员权限。想先看它会做什么、不实际修改系统，命令末尾加 ` -DryRun`。
 
-> 不装也完全能用：把聊天记录导出文件（JSONL/CSV/TXT）丢进 `imports\` 目录扫描导入，邮件整理等其余功能一模一样。
+> 不装也完全能用：把聊天记录导出文件（JSONL/CSV/TXT）丢进 `imports\` 目录扫描导入，邮件整理等其余功能一模一样。详见 [Moect 集成](#moect-集成微信消息来源) 章节。
 
 ### 第 7 步：双击「启动 MessageHub.bat」
 
@@ -195,7 +195,7 @@ winget install Moect
 
 ### 第 8 步（可选）：开机自启，开机后零操作
 
-双击 `scripts\install_autostart.bat` 安装后，登录 Windows 就能全自动运行——你唯一要做的就是**登录微信客户端**，其余不用碰：
+先按[第 6 步](#第-6-步要用微信实时采集运行一条安装命令powershell)装好两个计划任务，再双击 `scripts\install_autostart.bat` 装上注册表 Run 键（登录后立即打开服务）。之后登录 Windows 就能全自动运行——你唯一要做的就是**登录微信客户端**，其余不用碰：
 
 | 组件 | 由谁拉起 | 作用 |
 |---|---|---|
@@ -312,18 +312,19 @@ python -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000
 
 ### 复现步骤
 
-#### 1. 让 Moect 能解密你的微信
+#### 1. 一键安装（推荐）
 
-headless 模式需要一份 Moect 的 GPL 源码（本机实测路径 `D:\Projects\moect_src`，在 `moect_headless.py` 顶部 `sys.path.insert` 处配置）。headless 桥从这里 import `core.service.Service`——**GPL 源码是独立 clone，不进本项目的发行包**。
-
-如果你没有源码，也可以只用 GUI 模式：按官方方式安装 Moect 并**手动跑通一次解密**：
-
-```bash
-winget install Moect
-# 或从 https://github.com/mofan6/Moect/releases 下载
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
 ```
 
-先确认微信桌面版已登录并保持运行，再打开 Moect 界面完整跑一次导出，看到快照生成。这一步不通过，后面都白搭。
+这条命令会自动 clone Moect 的 GPL 源码到项目目录 `moect_src/`（已 gitignore，不进本项目发行包）、装好 headless 所需的依赖、并注册两个计划任务。headless 桥从这里 import `core.service.Service`，**不启动 Moect 图形界面**——这正是它比旧方案稳定的原因。
+
+源码位置自动探测，顺序为：`.env` 的 `MOECT_SRC` → 项目内 `moect_src/` → 用户主目录 `moect_src/` → `D:\Projects\moect_src`。手动 clone 到别处时，在 `.env` 里写一行即可：
+
+```ini
+MOECT_SRC=C:\你的路径\Moect
+```
 
 > 微信数据目录不在标准位置时（本机是 `D:\Wechat_Files\xwechat_files`），需要在 Moect 设置里指过去。
 
@@ -361,15 +362,14 @@ python scripts/moect_live.py --check
 
 #### 4. 刷新快照（headless 桥）
 
-headless 桥用系统 Python 3.12 直接跑（**不要用它人的 venv**，某些带沙箱注入的终端环境会污染进程枚举，导致看不到微信进程）：
+正式运行交给第 1 步装好的计划任务（`pythonw.exe` 静默、无黑框、每 5 分钟一轮）。想手动调试一轮也可以：
 
-```bash
+```bat
 # 单轮：连一次微信、产出快照、退出（计划任务就是这个模式）
-C:\Users\<你>\AppData\Local\Programs\Python\Python312\python.exe scripts\moect_headless.py --once
-
-# 常驻循环
-python scripts/moect_headless.py --loop
+C:\Users\<你>\AppData\Local\Programs\Python\Python312\pythonw.exe scripts\moect_headless.py --once
 ```
+
+> ⚠️ 用**系统 Python**（3.11+），不要用项目的 `.venv`，也不要从带沙箱注入的 AI 终端里嵌套拉起——那些环境会污染进程枚举，导致看不到微信进程。计划任务跑在干净环境里，没有这个问题。
 
 成功日志（`runtime/moect_headless.log`）：
 
@@ -381,7 +381,7 @@ python scripts/moect_headless.py --loop
 [20:38:22] 本轮结果: OK
 ```
 
-首次运行会把 Moect 的 `keys.json` / `config.json` 从系统位置复制到 `runtime/moect_data/`（**只复制文件，不读取密钥内容**），并把 `config.json` 的 `library.root` 指向 `archives/current`。之后每轮只更新快照。
+首次运行时 headless 桥会自行检测已登录的微信账号，从微信进程内存提取解密凭据（不启动图形界面、不需要预置任何 keys/config 文件），快照写到 `runtime/moect_data/archives/`。凭据只落在本机该目录，不打印、不进日志、不上传。之后每轮只更新快照。
 
 #### 5. 采集入库
 
@@ -420,7 +420,7 @@ python scripts/moect_live.py --loop --interval 120 --no-refresh
 
 ### 几个实现细节（踩过的坑）
 
-**headless 桥绕开整个 GUI 栈**。Moect GUI 的 WebView2 / pythonnet 初始化在本机反复失败（弹「GDI+ Window」fallback 窗口、`__ready` 永不设置、`--smoke` 30 秒超时退出）。而且 `--smoke` 本质只是 UI 回归测试钩子，真正的快照来自前端 React 加载后调 `startup_reconnect`。headless 桥直接 import 源码 `Service` 调 `startup_reconnect()`，轮询任务完成后 `shutdown()`，彻底绕开 GUI。另有两个隐藏陷阱：stdout 接 `DEVNULL` 会让 pythonnet 自杀（必须接真实文件句柄）；新版 Moect 还有教程门控（`tutorials_seen.app` 必须为特定值才自动 reconnect）。
+**headless 桥绕开整个 GUI 栈**。Moect GUI 的 WebView2 / pythonnet 初始化在本机反复失败（弹「GDI+ Window」fallback 窗口、`__ready` 永不设置、`--smoke` 30 秒超时退出）。而且 `--smoke` 本质只是 UI 回归测试钩子，真正的快照来自前端 React 加载后调 `startup_reconnect`。headless 桥直接 import 源码 `Service`：先 `detect()` 找到已登录的微信账号（首次运行顺带初始化 library 配置），再直接 `connect()`，轮询任务完成后 `shutdown()`——完全绕开 GUI 及其教程门控（`tutorials_seen.app` 那套只在 GUI 自动重连时起作用）。另有一个隐藏陷阱：stdout 接 `DEVNULL` 会让 pythonnet 自杀，所以计划任务用 `pythonw.exe` 并把输出写进日志文件。
 
 **刷新与采集解耦，各自保活**。`MessageHubHeadless` 任务负责产快照（每 5 分钟，`pythonw.exe` 静默无黑框、12 分钟预算、`IgnoreNew` 防重叠）；`MessageHubWatchdog` 负责拉活 API 和采集器（每 5 分钟）。两者独立，一个挂了不影响另一个。
 
@@ -493,6 +493,7 @@ curl -X POST http://127.0.0.1:8000/api/live/ingest \
 |---|---|
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 任意 OpenAI 兼容接口。不配则降级本地规则/群名标签 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `BRIEF_TO` | 邮件推送（整理邮件 + 加急邮件），可选；`SMTP_PASS` 是邮箱授权码不是登录密码 |
+| `MOECT_SRC` | Moect **GPL 源码目录**（其下应有 `core/service.py`）。headless 模式自动探测，源码装在别处时才需要显式指定 |
 | `MOECT_EXE` | Moect.exe 路径，仅 GUI 回退模式需要（headless 模式不用） |
 | `HOST` / `PORT` | `PORT` 是**采集器推送目标端口**，需与实际服务端口一致；网页服务端口由启动脚本决定（见下） |
 
@@ -785,7 +786,7 @@ pytest -q
 | **不改原始数据库** | 只读 Moect 产出的明文快照，不改微信自己的库 |
 | **只监听回环** | 默认 `127.0.0.1:8000`，不对外暴露 |
 | **只采群聊** | 默认跳过单聊，`--include-private` 才放开；私聊分级见配置 |
-| **密钥不落地** | 脚本只复制 Moect 的 `keys.json`，从不读取内容 |
+| **密钥只在本机** | headless 桥从微信进程内存提取的解密凭据只写入本机 `runtime/moect_data/`，不打印、不进日志、不上传 |
 | **邮件是唯一外发通道** | 只发到你 `.env` 里配置的 `BRIEF_TO` 收件箱，内容是整理后的待办，不是原始聊天记录 |
 | **敏感文件隔离** | `.env`、`config/personal.json`、`runtime/`、`imports/` 全部 gitignore |
 | **提交前拦截** | `scripts/install_hooks.py` 装 pre-commit 钩子，拦 `.env`、密钥、含聊天正文的产物 |
@@ -797,7 +798,7 @@ pytest -q
 ## 已知限制
 
 - **准实时，不是毫秒推送**。快照刷新间隔 5 分钟，采集间隔 120 秒；加急检查每 3 分钟。每轮刷新会搬运约 1.5 GB 的快照文件，别把间隔设太短。
-- **headless 桥绑定本机 Moect 源码路径**。改机器或升级 Moect 版本时，要同步更新 `moect_headless.py` 顶部的源码路径，并检查教程门控常量（`TUTORIAL_REVISION`）。GPL 源码需自行 clone，不随本项目分发。
+- **headless 桥依赖一份单独的 Moect GPL 源码**（安装脚本会自动 clone，不随本项目分发）。源码位置可自动探测或用 `.env` 的 `MOECT_SRC` 指定。升级 Moect 版本时需检查教程门控常量（`TUTORIAL_REVISION`）是否变化。
 - **Moect 通道仅 Windows**。macOS / Linux 只能走 `/api/live/ingest` 或文件导入。
 - **加急判定偏保守**。三个条件同时满足才发，缺 LLM 时只认「今天 / 明天」——可能漏掉一些其实挺急但表述模糊的事。这是刻意的取舍：宁可漏一封，不可滥一封。
 - **邮件依赖外部 SMTP / LLM**。没配 LLM 时标签退化为群名、加急截止只走规则；没配 SMTP 时完全不发邮件，只能在网页看。
@@ -846,7 +847,8 @@ MessageHub/
 │   ├── push_message.py          命令行推送
 │   ├── build_memories_report.py 生成离线「去年今日」HTML
 │   ├── install_hooks.py         安装 pre-commit 钩子
-│   └── install_autostart.bat    开机自启安装
+│   ├── install_autostart.bat    注册表 Run 键安装（登录即启动服务）
+│   └── install_scheduled_tasks.ps1 ★ 一键装 Moect 源码+依赖+双计划任务（任意目录可用）
 ├── tests/                       122 项测试
 ├── imports/                     你的导出文件（gitignore）
 └── runtime/                     数据库 / 日志 / 快照 / digest 水位（gitignore）

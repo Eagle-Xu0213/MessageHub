@@ -82,6 +82,10 @@ runtime/*.json
 runtime/*
 !.gitkeep
 
+# Moect GPL 源码：由 install_scheduled_tasks.ps1 自动 clone，独立 GPL-3.0 项目，
+# 不属于本发行包，永不入库。
+/moect_src/
+
 # 外部工具反复生成的截图/进度残留（11-15 发现 src/1/，11-18 又出现根级 1/）
 /1/
 src/1/

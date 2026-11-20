@@ -1,8 +1,11 @@
 """Headless Moect snapshot bridge (no GUI, no WebView2, no .NET).
 
-Uses Moect's GPL source (D:/Projects/moect_src) Service class directly:
-connect() = extract keys from running WeChat processes + decrypt + snapshot.
+Imports Moect's GPL source Service class directly and calls connect():
+extract keys from running WeChat processes + decrypt + write snapshot.
 This bypasses the flaky WebView2/pythonnet startup path entirely.
+
+The Moect source tree is auto-detected (or set MOECT_SRC in .env); it is a
+separate GPL clone, never bundled with this project.
 
 Usage: python moect_headless.py [--once | --loop]
 """
@@ -15,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, "D:/Projects/moect_src")
 
 BJ = timezone(timedelta(hours=8))
 LOG_FILE = ROOT / "runtime" / "moect_headless.log"
@@ -44,6 +46,44 @@ def log(msg: str) -> None:
         pass
 
 
+def resolve_moect_src() -> Path:
+    """Locate the Moect GPL source tree. Env MOECT_SRC wins.
+
+    Search order: MOECT_SRC → <project>/moect_src → ~/moect_src →
+    %USERPROFILE%\\moect_src → D:/Projects/moect_src (legacy).
+    """
+    candidates: list[Path] = []
+    env_src = (os.environ.get("MOECT_SRC") or "").strip()
+    if env_src:
+        candidates.append(Path(env_src).expanduser())
+    candidates += [
+        ROOT / "moect_src",
+        Path.home() / "moect_src",
+        Path(os.environ.get("USERPROFILE") or "") / "moect_src",
+        Path("D:/Projects/moect_src"),
+    ]
+    for candidate in candidates:
+        try:
+            if candidate.is_dir() and (candidate / "core" / "service.py").is_file():
+                return candidate.resolve()
+        except OSError:
+            continue
+    raise RuntimeError(
+        "找不到 Moect GPL 源码（需有 core/service.py）。"
+        "请 clone https://github.com/mofan6/Moect 到本地，"
+        "然后在项目 .env 里设置 MOECT_SRC=<源码目录的绝对路径>。"
+    )
+
+
+try:
+    MOECT_SRC = resolve_moect_src()
+    sys.path.insert(0, str(MOECT_SRC))
+    log(f"Moect 源码目录: {MOECT_SRC}")
+except RuntimeError as exc:
+    log(f"启动失败: {exc}")
+    raise
+
+
 def current_snapshot() -> Path:
     """The fixed merged directory consumed by moect_live.py."""
     return ARCHIVES / "current"
@@ -63,23 +103,64 @@ def snapshot_stamp(p: Path) -> tuple | None:
         return None
 
 
+def pick_account(svc) -> str | None:
+    """Detect running WeChat and bootstrap library config on a fresh install.
+
+    Moect's startup_reconnect() is gated on a config written by its GUI
+    (library.account_dir + tutorials_seen). A fresh clone has none of that,
+    so we detect the account ourselves and call connect() directly. Key
+    extraction happens inside connect() from the WeChat process memory —
+    no GUI and no pre-existing keys.json needed.
+    """
+    detected = svc.detect()
+    if not detected.get("running"):
+        log("未检测到运行中的微信进程，请先登录微信桌面版")
+        return None
+    accounts = detected.get("accounts") or []
+    if not accounts:
+        log("detect 未找到微信账号数据目录")
+        return None
+
+    lib = svc.config.get("library") or {}
+    wanted = lib.get("account_dir")
+    chosen = accounts[0]
+    if wanted:
+        norm = lambda s: os.path.normcase(os.path.abspath(str(s or "")))
+        for item in accounts:
+            acct = svc.accounts.get(item["id"]) or {}
+            if norm(acct.get("path")) == norm(wanted):
+                chosen = item
+                break
+
+    account_id = chosen["id"]
+    account = svc.accounts.get(account_id) or {}
+    log(f"目标微信账号: {chosen.get('wxid') or account.get('wxid') or account_id}")
+    if not lib.get("account_dir"):
+        svc.config["library"] = {
+            "root": str(current_snapshot()),
+            "account_dir": account.get("path", ""),
+            "name": account.get("dir_name", "微信账号"),
+            "wxid": account.get("wxid", ""),
+        }
+        log("首次运行：已根据检测到的微信账号初始化 library 配置")
+    return account_id
+
+
 def run_connect() -> bool:
     """Trigger Service.connect() headlessly; report success."""
     from core.service import Service
 
-    svc = Service("D:/Projects/moect_src/ui-qce", root=str(DATA_DIR))
+    svc = Service(str(MOECT_SRC / "ui-qce"), root=str(DATA_DIR))
     try:
-        lib = svc.config.get("library") or {}
-        if not lib or not lib.get("account_dir"):
-            log("config 无 library/account_dir，跳过")
-            return False
         before = snapshot_stamp(current_snapshot())
-        # connect(account_id)：detect 找到与 library.account_dir 匹配的账号
-        result = svc.startup_reconnect()
-        log(f"startup_reconnect 返回: {str(result)[:200]}")
+        account_id = pick_account(svc)
+        if not account_id:
+            return False
+        result = svc.connect(account_id)
+        log(f"connect 返回: {str(result)[:200]}")
         job = (result or {}).get("job") if isinstance(result, dict) else None
         if not job:
-            log(f"startup_reconnect 未产生任务: {result}")
+            log(f"connect 未产生任务: {result}")
             return False
         job_id = job if isinstance(job, str) else job["id"]
         log(f"connect 任务已创建 {job_id}，等待完成…")
@@ -105,6 +186,9 @@ def run_connect() -> bool:
         # 等待快照写完整（最后一次 db 尺寸稳定）
         return bool(snapshot_stamp(Path(new_root)) or
                     snapshot_stamp(current_snapshot()))
+    except Exception as e:
+        log(f"connect 异常: {type(e).__name__}: {e}")
+        return False
     finally:
         try:
             svc.shutdown()

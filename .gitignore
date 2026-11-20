@@ -78,6 +78,10 @@ runtime/uia_*.json
 runtime/live_page.js
 runtime/*.json
 
+# 排障期间的临时产物（快照升级包、截图、备份等，全部本地留存）
+runtime/*
+!.gitkeep
+
 # 外部工具反复生成的截图/进度残留（11-15 发现 src/1/，11-18 又出现根级 1/）
 /1/
 src/1/

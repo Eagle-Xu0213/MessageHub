@@ -250,6 +250,12 @@ def _prepare_data_dir() -> None:
 # 由 OS 回收，无持久化残留。
 HIDDEN_DESKTOP_NAME = "MessageHubHeadless"
 _hidden_desktop_handle = None
+# 隐藏桌面连续无快照的轮数：达到阈值后自动回退前台最小化启动。
+# 背景（2026-11-20）：某次重启后隐藏桌面里的 Moect --smoke 连快照目录都
+# 不再创建（connect 任务却显示完成），禁用 GPU 也无效；前台启动完全正常。
+# 原因不明（疑与 WebView2/窗口站状态相关），故做成自适应：隐藏桌面可用时
+# 零窗口闪烁，失效时自动降级为可见但最小化、不抢焦点的启动方式。
+_hidden_fail_streak = 0
 
 
 def _ensure_hidden_desktop() -> bool:
@@ -279,22 +285,130 @@ def _ensure_hidden_desktop() -> bool:
         return False
 
 
+def _find_system_python() -> str | None:
+    """找一个不受 WorkBuddy 沙箱 sitecustomize 污染的系统 Python。
+
+    本机陷阱：venv python 启动时载入 WorkBuddy 注入的 sitecustomize，
+    它把进程可见性过滤掉了（EnumProcesses 只剩 77/509 个 PID，看不到
+    Weixin.exe），headless 桥的 psutil 探测随之失效。系统级安装的
+    Python 没有这个注入。
+    """
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) /
+        "Programs" / "Python" / "Python312" / "python.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) /
+        "Programs" / "Python" / "Python311" / "python.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) /
+        "Programs" / "Python" / "Python313" / "python.exe",
+        # WorkBuddy 托管的解释器本体（venv 的 pyvenv.cfg 指向它；本体无注入，
+        # 只有基于它创建的 venv 才会被 sitecustomize 污染）
+        Path(os.environ.get("LOCALAPPDATA", "")) /
+        ".workbuddy" / "binaries" / "python" / "versions" / "3.13.12" /
+        "python.exe",
+    ]
+    for c in candidates:
+        try:
+            if c.is_file():
+                return str(c)
+        except OSError:
+            continue
+    return None
+
+
+def _refresh_headless(src_dir: Path) -> bool:
+    """通过 Moect 源码的 Service.connect() 无 GUI 刷新快照。
+
+    以**系统 Python 子进程**方式运行 moect_headless.py（venv python 被
+    WorkBuddy 沙箱注入后看不到微信进程，详见 _find_system_python）。
+    成功后新快照落在 archives/<account>/snapshot_xxx，由调用方
+    （run_once 的 consolidate）搬进 current/。
+    """
+    before = {str(p) for p in list_snapshots()}
+    py = _find_system_python()
+    if not py:
+        log("headless: 找不到未注入的系统 Python，无法运行 headless 桥")
+        return False
+    # 子进程需要与系统 python 相同版本的依赖（psutil/pycryptodomex/PIL）
+    # ——首次运行前由 setup/README 指引安装；此处只在失败时提示。
+    # 环境清洗：剥离 WorkBuddy 沙箱的 PYTHONPATH 注入（shim/sitecustomize 会
+    # 过滤子进程的进程枚举，psutil 看不到 Weixin.exe → detect 误判未登录）。
+    child_env = {k: v for k, v in os.environ.items()
+                 if k not in ("PYTHONPATH", "PYTHONSTARTUP")}
+    child_env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        r = subprocess.run(
+            [py, str(ROOT / "scripts" / "moect_headless.py")],
+            capture_output=True, timeout=720, cwd=str(ROOT), env=child_env)
+        out = (r.stdout or b"").decode("utf-8", errors="replace")
+        for line in out.strip().splitlines():
+            if line.startswith("["):
+                log("headless: " + line.strip())
+        if r.returncode == 0:
+            log("headless: 本轮刷新成功")
+            return True
+        err = (r.stderr or b"").decode("utf-8", errors="replace")
+        log(f"headless: 失败 exit={r.returncode} "
+            f"{err.strip().splitlines()[-1][:160] if err.strip() else ''}")
+        if "ModuleNotFoundError" in err:
+            log("headless: 系统 Python 缺依赖，执行：\n"
+                f'  "{py}" -m pip install psutil pycryptodomex pillow zstandard')
+        return False
+    except subprocess.TimeoutExpired:
+        log("headless: 子进程超时 720s")
+        return False
+    except Exception as e:
+        log(f"headless 异常: {type(e).__name__}: {str(e)[:200]}")
+        return False
+
+
 def refresh_moect() -> bool:
     """触发一次刷新，等到新快照出现即结束 Moect 进程。
 
     实测 Moect --smoke 生成快照后 GUI 不会自行退出，若直接 subprocess.run
     会一直阻塞到超时；因此改为「轮询新快照 → 立即结束进程树」。
     """
+    global _hidden_fail_streak
     _prepare_data_dir()
     if not MOECT_EXE.is_file():
         log(f"找不到 Moect 可执行文件：{MOECT_EXE}")
         log("  请安装 Moect 并用环境变量 MOECT_EXE 指向 Moect.exe，"
             "或加 --no-refresh 只读现有快照。详见 README「Moect 集成」。")
         return False
+    # 首选 headless 桥（2026-11-20）：直接调 Moect GPL 源码的 Service.connect()，
+    # 完全绕开 GUI/WebView2/.NET 启动链。当日实测 GUI 路径因 WebView2 初始化
+    # 失败（pywebview 回退 GDI+ 窗口 → __ready 永不设置 → --smoke 25s 超时退出）
+    # 连续十余轮颗粒无收，而 headless 桥 45 秒稳定产出完整快照。
+    # headless 依赖：D:/Projects/moect_src 源码 + python 包 psutil/pycryptodomex/zstandard
+    headless_src = Path(os.environ.get(
+        "MOECT_HEADLESS_SRC", "D:/Projects/moect_src"))
+    if headless_src.is_dir():
+        return _refresh_headless(headless_src)
+    log("未找到 Moect 源码目录（MOECT_HEADLESS_SRC），回退 GUI --smoke 路径")
     before = {str(p) for p in list_snapshots()}
-    use_desktop = _ensure_hidden_desktop()
-    startup_flags = 0
-    startup_show = 0  # SW_HIDE（对 GUI 无效但无害）
+    # Moect 的 pythonnet/WinForms 启动路径会检测 stdout 句柄：
+    # stdout=DEVNULL 时启动即抛 "Unhandled exception in script" 25 秒内退出，
+    # stdout 重定向到真实文件句柄则完全正常（2026-11-20 排障结论，
+    # 这就是「connect 显示完成但快照不出现」的根因）。两条启动路径都必须
+    # 把 stdout/stderr 接到日志文件，绝不能用 DEVNULL。
+    smoke_out = DATA_DIR / "smoke_stdout.log"
+    h_out = open(smoke_out, "ab")
+    h_err = open(DATA_DIR / "smoke_stderr.log", "ab")
+    try:
+        h_out.truncate(0)
+        h_err.truncate(0)
+    except OSError:
+        pass
+    # 隐藏桌面启动方式默认关闭（2026-11-20 排障结论）：本机实测隐藏桌面里的
+    # Moect --smoke 长期不出快照（stdout 文件为空，连异常都没有），而前台
+    # 最小化启动（SW_SHOWMINNOACTIVE，不抢焦点）稳定产出完整快照。
+    # 如需实验隐藏桌面，设环境变量 MOECT_HIDDEN_DESKTOP=1。
+    max_hidden_fail = int(os.environ.get("MOECT_HIDDEN_MAX_FAIL", "3"))
+    use_desktop = os.environ.get("MOECT_HIDDEN_DESKTOP", "") == "1" \
+        and _ensure_hidden_desktop()
+    if not use_desktop and _hidden_fail_streak >= max_hidden_fail:
+        pass  # 普通路径无需提示；保留计数器供未来重新启用隐藏桌面时使用
+        use_desktop = False
+    startup_show = 7  # SW_SHOWMINNOACTIVE：最小化且不抢焦点（SW_HIDE 对 GUI 无效）
     if use_desktop:
         import ctypes
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -333,13 +447,24 @@ def refresh_moect() -> bool:
         si = STARTUPINFO()
         si.cb = ctypes.sizeof(STARTUPINFO)
         si.lpDesktop = "WinSta0\\" + HIDDEN_DESKTOP_NAME
+        # STARTF_USESTDHANDLES(0x100)：stdout/stderr 接真实文件句柄，
+        # 见上方 smoke_out 注释（DEVNULL 会触发 Moect 启动异常）
+        si.dwFlags = 0x100
+        si.hStdOutput = int(h_out.fileno())
+        si.hStdError = int(h_err.fileno())
         pi = PROCESS_INFORMATION()
         # CreateProcessW 的 lpCommandLine 必须是可写缓冲区（可能被改写），
         # 直接传 Python 字符串会在部分系统上访问违规
         cmdline_buf = ctypes.create_unicode_buffer(
             f'"{MOECT_EXE}" --smoke 1 --data-dir "{DATA_DIR}"')
+        # 工作目录必须指向 data-dir：实测 Moect 1.2.8 的 --smoke 在
+        # cwd=项目 src/ 等目录时 connect 卡 8% 且不产出快照目录
+        #（2026-11-20 排障结论），cwd=data-dir 才能稳定出完整快照。
+        cwd_buf = ctypes.create_unicode_buffer(str(DATA_DIR))
+        # bInheritHandles=TRUE：不继承句柄的话 Moect 拿到的 std 句柄无效，
+        # 等同于无 stdout，一样触发启动异常（2026-11-20 实测）
         ok = k32.CreateProcessW(
-            None, cmdline_buf, None, None, 0, 0, None, None,
+            None, cmdline_buf, None, None, 1, 0, None, cwd_buf,
             ctypes.byref(si), ctypes.byref(pi))
         if ok:
             proc_pid = pi.dwProcessId
@@ -360,61 +485,87 @@ def refresh_moect() -> bool:
         try:
             proc = subprocess.Popen(
                 [str(MOECT_EXE), "--smoke", "1", "--data-dir", str(DATA_DIR)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=h_out, stderr=h_err,   # DEVNULL 会触发 Moect 启动异常
+                cwd=str(DATA_DIR),   # 见上方 cwd 注释：Moect 对工作目录敏感
                 startupinfo=hidden)
         except Exception as e:
             log(f"刷新启动失败: {type(e).__name__}: {e}")
+            h_out.close()
+            h_err.close()
             return False
-    deadline = time.time() + 120
-    found = False
-    last_sig = None
-    while time.time() < deadline:
-        fresh = [p for p in list_snapshots()
-                 if str(p) not in before and p.name.startswith("snapshot_")]
-        for cand in fresh:
-            if not snapshot_complete(cand):
-                continue
-            try:
-                sig = tuple(sorted((f.name, f.stat().st_size)
-                                   for f in cand.rglob("*.db") if f.is_file()))
-            except Exception:
-                continue
-            if sum(size for _, size in sig) < 800 * 1024 * 1024:
-                last_sig = None
-                continue
-            # 连续两次文件清单与大小一致 → 认为快照已写完
-            if sig == last_sig:
-                found = True
+    try:
+        deadline = time.time() + 120
+        found = False
+        last_sig = None
+        while time.time() < deadline:
+            fresh = [p for p in list_snapshots()
+                     if str(p) not in before and p.name.startswith("snapshot_")]
+            for cand in fresh:
+                if not snapshot_complete(cand):
+                    continue
+                try:
+                    sig = tuple(sorted((f.name, f.stat().st_size)
+                                       for f in cand.rglob("*.db") if f.is_file()))
+                except Exception:
+                    continue
+                if sum(size for _, size in sig) < 800 * 1024 * 1024:
+                    last_sig = None
+                    continue
+                # 连续两次文件清单与大小一致 → 认为快照已写完
+                if sig == last_sig:
+                    found = True
+                    break
+                last_sig = sig
+            if found:
                 break
-            last_sig = sig
+            if proc is not None and proc.poll() is not None:
+                # Moect 是 PyInstaller 引导器结构：引导进程在拉起真正的主进程后
+                # ~20s 即退出，proc.poll() 判空会把「主进程正在写快照」误判为
+                # 「Moect 已结束」而提前收尾。改为按映像名确认没有任何 Moect
+                # 进程存活时才允许提前结束等待。
+                try:
+                    # 不用 text=True：中文 Windows 的 tasklist 输出是 GBK，
+                    # 按 UTF-8 解码会炸。映像名是 ASCII，按字节匹配即可。
+                    r = subprocess.run(
+                        ["tasklist", "/FI", f"IMAGENAME eq {MOECT_EXE.name}"],
+                        capture_output=True, timeout=10, check=False)
+                    if MOECT_EXE.name.encode() not in (r.stdout or b""):
+                        break
+                except Exception:
+                    break
+            time.sleep(2)
+    finally:
+        # 无论是否已生成快照，都结束 Moect 进程树，避免 GUI 常驻与句柄残留
+        kill_pid = proc.pid if proc is not None else proc_pid
+        try:
+            subprocess.run(["taskkill", "/PID", str(kill_pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=10, check=False)
+        except Exception:
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        # Moect 单实例转发会把 GUI 进程重新拉起在原进程树之外，上面的按 PID
+        # 击杀够不到它。按映像名补杀兜底——在隐藏桌面路径下这只是清理隐藏
+        # 桌面里的残留进程，主桌面不受影响；在回退路径下防止窗口闪现后残留。
+        # 注意：这会同时杀掉手动打开的 Moect 界面——本管线按设计无头运行，
+        # 需要交互使用 Moect 时请先停掉采集器。
+        try:
+            subprocess.run(["taskkill", "/IM", MOECT_EXE.name, "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=10, check=False)
+        except Exception:
+            pass
+        h_out.close()
+        h_err.close()
+    # 隐藏桌面健康度跟踪：成功清零，失败累计；累计满阈值时下一轮回退前台
+    if use_desktop:
         if found:
-            break
-        if proc is not None and proc.poll() is not None:
-            break
-        time.sleep(2)
-    # 无论是否已生成快照，都结束 Moect 进程树，避免 GUI 常驻与句柄残留
-    kill_pid = proc.pid if proc is not None else proc_pid
-    try:
-        subprocess.run(["taskkill", "/PID", str(kill_pid), "/T", "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=10, check=False)
-    except Exception:
-        if proc is not None:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-    # Moect 单实例转发会把 GUI 进程重新拉起在原进程树之外，上面的按 PID
-    # 击杀够不到它。按映像名补杀兜底——在隐藏桌面路径下这只是清理隐藏
-    # 桌面里的残留进程，主桌面不受影响；在回退路径下防止窗口闪现后残留。
-    # 注意：这会同时杀掉手动打开的 Moect 界面——本管线按设计无头运行，
-    # 需要交互使用 Moect 时请先停掉采集器。
-    try:
-        subprocess.run(["taskkill", "/IM", MOECT_EXE.name, "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=10, check=False)
-    except Exception:
-        pass
+            _hidden_fail_streak = 0
+        else:
+            _hidden_fail_streak += 1
     return found
 
 

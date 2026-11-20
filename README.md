@@ -1,10 +1,10 @@
 # MessageHub
 
-**把微信工作群变成一份每天早上的待办清单。**
+**你不在电脑前时攒下的工作消息，回来时已经整理成一份待办清单躺在邮箱里。**
 
-本地运行的聊天消息中枢：接入微信真实群聊消息，用规则引擎提取「谁让你干什么、什么时候截止」，生成每日工作简报。所有数据只存在你本机的 SQLite 里，不联网、不上传、不发送任何消息。
+本地运行的聊天消息中枢：接入微信真实群聊消息，用规则引擎提取「谁让你干什么、什么时候截止」。程序唤醒时（开机/服务启动）自动把上次整理以来的积压事件整理成邮件发给你，真正紧急的事（直呼 + 指派 + 48 小时内截止）则立即加急推送。所有聊天数据只存在你本机的 SQLite 里，不上云、不上传。
 
-> 核心思路：群消息不是用来读的，是用来**变成任务**的。21 万条历史消息里真正需要你动手的不到 1%，问题从来不是消息太多，而是没有过滤。
+> 核心思路：群消息不是用来读的，是用来**变成任务**的。21 万条历史消息里真正需要你动手的不到 1%，问题从来不是消息太多，而是没有过滤。定时晨报没意义——你几点开电脑不固定；真正有价值的是「离开期间攒下的，回来一次性整理好」。
 
 ---
 
@@ -27,6 +27,7 @@
 - [快速开始（开发者）](#快速开始开发者)
 - [Moect 集成（微信消息来源）](#moect-集成微信消息来源)
 - [配置](#配置)
+- [邮件通知机制](#邮件通知机制)
 - [工作事件提取规则](#工作事件提取规则)
 - [页面与 API](#页面与-api)
 - [数据来源适配器](#数据来源适配器)
@@ -43,10 +44,12 @@
 
 | 功能 | 说明 |
 |---|---|
-| **工作简报** | 每天 8 点自动生成三栏简报：今日待办 / 需你回复 / 通知。每条都挂着原文出处，可点开看上下文 |
+| **唤醒补扫邮件** | 服务启动时把「上次整理水位 → 现在」的积压事件一次性整理发到邮箱。LLM 打语义标签分组（课程作业 / 报名截止 / 会议安排…），另附一段人话摘要。不看网页也知道离开了多久攒了哪些事 |
+| **紧急加急** | 直呼你 + 明确指派 + LLM 解析截止在 48h 内，三者同时满足 → 立即发加急邮件 + Windows 桌面通知，不限数量，同一条不重复发。宁可漏一封，不可滥一封 |
 | **事件提取** | 规则引擎判断哪些消息是在给你派活：`@你`、直呼你、上下文对话中的祈使句，配合任务语义打分 |
-| **闭环检测** | 事件之后翻你的回复，已经答应的不再重复提醒。回了「明天可以」就标记为已改期，不会一直挂着 |
+| **闭环检测** | 事件之后翻你的回复，已经答应的自动归入「已处理」，不再进待办——不会反复提醒你做过的事 |
 | **实时消息流** | 每 120 秒增量拉取新消息，SSE 推送到网页，指纹去重保证幂等 |
+| **网页简报** | `/brief` 按需看三栏简报（待办 / 需回复 / 通知），每条挂着原文出处；不再定时自动发信 |
 | **去年今日** | 按北京时间严格匹配一年前的同一天，回顾当时群里在聊什么 |
 | **全文检索** | SQLite FTS5 索引，按群、时间、关键词查历史消息 |
 
@@ -55,34 +58,44 @@
 ## 它是怎么工作的
 
 ```
-微信客户端
-   │
-   ├─ Moect（第三方解密工具，本机已登录微信）
-   │     └─ 生成明文 SQLite 快照（zstd 压缩的消息内容）
-   │            │
-   │            ▼
-   │      scripts/moect_live.py        ← 采集桥：触发刷新、解压、映射群名、增量读
-   │            │
-   │            ▼
-   │      POST /api/live/ingest        ← 唯一稳定接入点，指纹去重
-   │            │
-   │            ▼
-   │      SQLite（messages 表）─────────┐
-   │            │                       │
-   │            ▼                       ▼
-   │      rules.py 事件提取        SSE → /live 实时流
-   │            │
-   │            ▼
-   │      resolution.py 闭环检测
-   │            │
-   │            ▼
-   │      brief.py 三栏聚合 → LLM 摘要（失败降级本地规则）
-   │            │
-   │            ▼
-   └──── 每日简报 / 邮件推送
+【快照刷新链】由 Windows 计划任务驱动，无需人工干预
+  微信客户端（已登录）
+      │
+      ▼
+  MessageHubHeadless 计划任务（每 5 分钟，pythonw 静默无窗口）
+      └─ scripts/moect_headless.py   ← headless 桥：直接调 Moect 源码 Service.connect()
+             └─ 明文快照 archives/current/（zstd 压缩）
+
+【采集入库链】看门狗保活
+  MessageHubWatchdog 计划任务（每 5 分钟拉活）
+      ├─ API 服务（uvicorn :8000）
+      └─ scripts/moect_live.py --loop --no-refresh   ← 只读快照、解压、增量推
+             │
+             ▼
+        POST /api/live/ingest        ← 唯一稳定接入点，指纹去重
+             │
+             ▼
+        SQLite（messages 表）──────────┐
+             │                          │
+             ▼                          ▼
+        rules.py 事件提取          SSE → /live 实时流
+             │
+             ▼
+        resolution.py 闭环检测
+             │
+       ┌─────┴──────────────────┐
+       ▼                        ▼
+  digest.py 唤醒补扫        digest.py 加急检查（每 3 分钟）
+       │                        │
+  LLM 打标签分组           三者同时满足？→ 邮件 + 桌面通知
+       │
+       ▼
+  整理邮件（发到邮箱）
 ```
 
-**为什么绕这么一圈**：微信 4.x 的消息区是自绘渲染层（`MMUIRenderSubWindowHW`），UIA 无障碍树里读不到任何正文，实测 63 个节点全是空壳。所以只能从数据库层取——而数据库是 SQLCipher 加密的，必须借助已经完成解密的工具。
+**为什么要 headless 桥**：微信 4.x 的消息区是自绘渲染层（`MMUIRenderSubWindowHW`），UIA 无障碍树里读不到任何正文。只能从数据库层取，而数据库是 SQLCipher 加密的，密钥只在已登录的微信进程内存里。早期方案是启动 Moect GUI 触发解密，但它的 WebView2 / .NET 初始化在本机极不稳定（反复弹窗、卡死、静默退出）。现在的 headless 桥直接 import Moect 的 GPL 源码调用 `Service.connect()`，不开任何界面，稳定得多。刷新快照（headless 任务）和读快照入库（采集器）完全解耦，各自独立保活。
+
+**为什么不靠定时晨报**：你几点开电脑不固定，8 点发信时服务可能还没起，积压的消息就漏了。改成服务一唤醒就把「上次整理水位 → 现在」一次性整理发信，才贴合真实使用节奏。
 
 ---
 
@@ -154,27 +167,37 @@ setup.bat 会自动打开记事本，编辑 `config\personal.json`，把里面�
 
 > ⚠️ **不填会怎样**：软件能启动、能导入历史消息，但**不会生成任何待办**——因为它不知道你是谁、哪些群算工作群。这是「简报是空的」的第一大原因。
 
-### 第 6 步（可选）：要用微信实时采集，安装 Moect
+### 第 6 步（可选）：要用微信实时采集，配置 Moect
 
-setup.bat 已经问过你了——回答 `y` 会自动执行下面的安装。跳过或当时选了 `n` 的话，之后随时可以补装：
+setup.bat 已经问过你了——回答 `y` 会装好 Moect。跳过或当时选了 `n` 的话，之后随时可以补装：
 
 ```bat
 winget install Moect
 ```
 
-装完后先**手动运行一次 Moect**，确认它能解密你的微信数据、生成快照。这一步不通过，后面都白搭。详细步骤见 [Moect 集成](#moect-集成微信消息来源) 章节。
+装完后先**登录微信桌面版并保持运行**，确认 Moect 能解密你的微信数据。注意 headless 模式（推荐）还需要一份 Moect 的 GPL 源码并配置路径——详见 [Moect 集成](#moect-集成微信消息来源) 章节，这里配置不对，后面采集就是空的。
 
-> 不装也完全能用：把聊天记录导出文件（JSONL/CSV/TXT）丢进 `imports\` 目录扫描导入，其余功能一模一样。
+> 不装也完全能用：把聊天记录导出文件（JSONL/CSV/TXT）丢进 `imports\` 目录扫描导入，邮件整理等其余功能一模一样。
 
 ### 第 7 步：双击「启动 MessageHub.bat」
 
 浏览器会自动打开 <http://127.0.0.1:8000/>，工作台页面出现即成功。保持窗口开启即可使用，关闭窗口即停止服务。
 
-之后每天的使用就是：**双击启动 → 看简报 → 干活**。
+服务启动时会自动补扫积压并发一封整理邮件（如果要发信，先在 `.env` 配好 SMTP，见[配置](#配置)）。之后每天的使用就是：**登录微信 → 双击启动 → 看邮件/网页简报 → 干活**。
+
+> 想连双击都省了？做[第 8 步](#第-8-步可选开机自启开机后零操作)开机自启，登录微信后什么都不用点。
 
 ### 第 8 步（可选）：开机自启，开机后零操作
 
-双击 `scripts\install_autostart.bat` 即安装：登录 Windows 后自动静默启动**采集器 + 网页服务 + 简报调度器**，简报有实质内容会自动发到配置的邮箱（见 `.env` 的 SMTP 段），全程无需任何手动操作。
+双击 `scripts\install_autostart.bat` 安装后，登录 Windows 就能全自动运行——你唯一要做的就是**登录微信客户端**，其余不用碰：
+
+| 组件 | 由谁拉起 | 作用 |
+|---|---|---|
+| 网页服务 + 采集器 | 注册表 Run 键 → `autostart_silent.vbs`，另有 `MessageHubWatchdog` 计划任务每 5 分钟保活 | 服务挂了自动拉起；采集器只读快照入库 |
+| 快照刷新 | `MessageHubHeadless` 计划任务（登录时 + 每 5 分钟，静默无窗口） | headless 桥调 Moect 源码刷新明文快照 |
+| 邮件整理 | 服务内部的 digest 调度线程 | 启动时补扫积压发整理邮件，之后每 3 分钟查加急 |
+
+装好之后，开机 → 登录微信 → 等几十秒，积压的工作消息就整理成邮件发到你的邮箱了。
 
 取消自启：
 
@@ -182,14 +205,16 @@ winget install Moect
 scripts\install_autostart.bat uninstall
 ```
 
-> 原理：往**当前用户**的注册表 Run 键（`HKCU\...\CurrentVersion\Run`）写一条 `wscript.exe autostart_silent.vbs`，不需要管理员权限。启动器是幂等的——服务和采集器已在运行时（端口占用 / 单实例锁）自动退出，重复双击「启动 MessageHub.bat」也不会起两份。
+> **原理**：Run 键写一条 `wscript.exe autostart_silent.vbs`（不需管理员权限），两个计划任务用 `MessageHubHeadless`（系统 Python + `pythonw.exe`，不弹黑框）和 `MessageHubWatchdog`（PowerShell 保活）注册。启动器都是幂等的——服务已在运行时自动退出，重复操作不会起两份。
 >
-> 如果 `install_autostart.bat` 在某些终端里因中文编码乱码执行失败，直接用 PowerShell 手动安装（等效）：
+> 如果 `install_autostart.bat` 在某些终端里因中文编码乱码执行失败，直接用 PowerShell 手动装 Run 键（等效）：
 >
 > ```powershell
 > $VBS = "$PWD\scripts\autostart_silent.vbs"   # 在项目根目录运行
 > New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "MessageHub" -PropertyType String -Value "wscript.exe `"$VBS`"" -Force | Out-Null
 > ```
+>
+> **本机注意**：headless 桥必须走系统 Python + 计划任务触发，不能从某些带沙箱注入的终端里嵌起——那些环境会污染进程枚举，导致看不到微信进程。用上面装好的计划任务就没这个问题。
 
 ---
 
@@ -271,45 +296,50 @@ python -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000
 
 ### Moect 是什么
 
-[Moect](https://github.com/ILoveScratch2/Moect) 是一个开源的微信数据库解密工具（Windows）。它读取微信本地的加密数据库，用你已登录的微信进程里的密钥解密，导出为明文 SQLite。
+[Moect](https://github.com/mofan6/Moect) 是一个 GPL-3.0 的开源微信数据库解密工具（Windows）。它用你已登录的微信进程内存里的密钥，解密本地 SQLCipher 加密数据库，导出为明文 SQLite 快照。
 
-**本项目不包含、不分发 Moect**，只调用它已经生成的明文快照。你需要自己安装并让它正常工作。
+**本项目不包含、不分发 Moect**，只调用它（或其 GPL 源码）产出的明文快照。
+
+> **两种工作模式**，取决于你的机器：
+> - **headless 模式（推荐，Windows + 已配置计划任务）**：`scripts/moect_headless.py` 直接 import Moect 的 GPL 源码调 `Service.connect()`，不开任何界面。稳定、静默，不受 WebView2 / .NET 初始化问题困扰。这是本项目实测最可靠的路径。
+> - **GUI 回退模式**：采集器退而求其次启动 `Moect.exe --smoke` 触发刷新。在本机因 GUI 初始化不稳已不作为主路径，但代码保留作兜底。
 
 ### 复现步骤
 
-#### 1. 安装并让 Moect 跑通
+#### 1. 让 Moect 能解密你的微信
+
+headless 模式需要一份 Moect 的 GPL 源码（本机实测路径 `D:\Projects\moect_src`，在 `moect_headless.py` 顶部 `sys.path.insert` 处配置）。headless 桥从这里 import `core.service.Service`——**GPL 源码是独立 clone，不进本项目的发行包**。
+
+如果你没有源码，也可以只用 GUI 模式：按官方方式安装 Moect 并**手动跑通一次解密**：
 
 ```bash
-# 方式一：winget
 winget install Moect
-
-# 方式二：从 Releases 下载
-# https://github.com/ILoveScratch2/Moect/releases
+# 或从 https://github.com/mofan6/Moect/releases 下载
 ```
 
-安装后**先手动运行一次 Moect**，确认它能解密你的微信数据、生成快照。这一步不通过，后面都白搭。
+先确认微信桌面版已登录并保持运行，再打开 Moect 界面完整跑一次导出，看到快照生成。这一步不通过，后面都白搭。
+
+> 微信数据目录不在标准位置时（本机是 `D:\Wechat_Files\xwechat_files`），需要在 Moect 设置里指过去。
 
 #### 2. 确认快照位置
 
-Moect 默认把快照放在：
+Moect 默认把快照放在 `%LOCALAPPDATA%\Moect\archives\<账号ID>\` 下。本项目的 headless 模式则写到项目内：
 
 ```
-%LOCALAPPDATA%\Moect\archives\<账号ID>\snapshot_<时间戳>\
+runtime/moect_data/archives/current/     ← 当前工作副本，采集器读这里
 ```
 
-里面是 `message_*.db`（消息）、`contact.db`（联系人）等文件。
-
-检查一下：
+里面是 `message_*.db`（消息）、`contact.db`（联系人）等文件。看看当前快照是否生成：
 
 ```bat
-dir "%LOCALAPPDATA%\Moect\archives"
+dir runtime\moect_data\archives\current
 ```
 
-能看到 `snapshot_*` 目录就对了。
+能看到一堆 `.db` 文件就对了。
 
-#### 3. 让 MessageHub 找到 Moect
+#### 3. 让 MessageHub 找到 Moect（仅 GUI 回退模式需要）
 
-`scripts/moect_live.py` 会按顺序自动探测：
+headless 模式不用配 `MOECT_EXE`——它直接用源码。只有走 GUI 回退时才需要让采集器找到 `Moect.exe`，它按这个顺序探测：
 
 1. 系统环境变量 `MOECT_EXE`
 2. 项目根 `.env` 文件里的 `MOECT_EXE`（采集器自己会读取 `.env`）
@@ -317,97 +347,95 @@ dir "%LOCALAPPDATA%\Moect\archives"
 4. `%PROGRAMFILES%\Moect\Moect.exe`
 5. `%PROGRAMFILES(X86)%\Moect\Moect.exe`
 
-**装在别处就必须显式指定**，在 `.env` 里加：
-
-```ini
-MOECT_EXE=C:\Tools\Moect\Moect.exe
-```
-
-`scripts/moect_live.py` 启动时会自动读取项目根的 `.env`。改完 `.env` 后无需重启采集器，下一轮采集生效。
-
-先验证一下探测结果：
+装在别处就显式指定，在 `.env` 里加 `MOECT_EXE=C:\Tools\Moect\Moect.exe`，改完下一轮采集生效。验证探测结果：
 
 ```bash
 python scripts/moect_live.py --check
 ```
 
-输出会告诉你找到了哪个 `Moect.exe`、快照目录在哪、能不能读到。如果显示「未找到」，就用上面的 `MOECT_EXE` 显式指定。
+#### 4. 刷新快照（headless 桥）
 
-再跑一次只读试运行，看快照路径通不通：
-
-```bash
-python scripts/moect_live.py --once --no-refresh
-```
-
-`--no-refresh` 表示只读现有快照、不触发 Moect 刷新。这一步能跑通说明快照路径没问题，再进入下一步。
-
-#### 4. 首次运行（关键）
-
-第一次必须让 Moect 把密钥档案复制到项目的 data-dir：
+headless 桥用系统 Python 3.12 直接跑（**不要用它人的 venv**，某些带沙箱注入的终端环境会污染进程枚举，导致看不到微信进程）：
 
 ```bash
-python scripts/moect_live.py --once
+# 单轮：连一次微信、产出快照、退出（计划任务就是这个模式）
+C:\Users\<你>\AppData\Local\Programs\Python\Python312\python.exe scripts\moect_headless.py --once
+
+# 常驻循环
+python scripts/moect_headless.py --loop
 ```
 
-脚本会做三件事：
-
-1. 把 `%LOCALAPPDATA%\Moect\archives\*\keys.json` 和 `config.json` 复制到 `runtime/moect_data/`（**只复制文件，不读取密钥内容**）
-2. 用 `Moect.exe --smoke 1 --data-dir runtime/moect_data` 触发一次刷新，生成新快照到项目目录内
-3. 读快照 → 解压 zstd → 提取群聊文本消息 → POST 到 `/api/live/ingest`
-
-成功的日志长这样：
+成功日志（`runtime/moect_headless.log`）：
 
 ```
-[moect] 已启用隐藏桌面隔离：Moect 前台窗口不再出现在主桌面
-[moect] Moect 已在隐藏桌面启动（用户不可见）
-[moect] 快照合并：移动 12 个文件到固定目录（磁盘恒定一份）
-[moect] 统计: 扫描=3000 非文本过滤=842 私聊跳过=511 候选=1204 推送=1204 入库=1204
+[20:38:15] headless bridge 启动 mode=once
+[20:38:15] connect 任务已创建 c29bb0e0...，等待完成…
+[20:38:22] connect 结束: completed (100%) detail=已连接，找到 1453 个会话
+[20:38:22] 新快照: ...\archives\58fa5d0d0fe6b507\snapshot_c29bb0e05491
+[20:38:22] 本轮结果: OK
 ```
 
-#### 5. 常驻运行
+首次运行会把 Moect 的 `keys.json` / `config.json` 从系统位置复制到 `runtime/moect_data/`（**只复制文件，不读取密钥内容**），并把 `config.json` 的 `library.root` 指向 `archives/current`。之后每轮只更新快照。
+
+#### 5. 采集入库
+
+快照由 headless 任务产出后，采集器只读它、不触发刷新：
 
 ```bash
-python scripts/moect_live.py --loop --interval 120
+python scripts/moect_live.py --loop --interval 120 --no-refresh
 ```
 
-或者直接双击 `启动 MessageHub.bat`，它会自动把采集器挂到后台。
+`--no-refresh` 表示只读现有快照——这是当前的推荐姿态，刷新交给独立的 headless 任务。它读快照 → 解压 zstd → 提取群聊文本 → POST 到 `/api/live/ingest`。日志在 `runtime/moect_live.log`。
+
+直接双击「启动 MessageHub.bat」或装好开机自启后，这些都会由计划任务/看门狗自动拉起，不用手动跑。
 
 ### 命令行参数
+
+`scripts/moect_headless.py`（刷新快照，系统 Python 直跑）：
+
+| 参数 | 说明 |
+|---|---|
+| `--once` | 连一次微信、产快照、退出（计划任务用这个） |
+| `--loop` | 常驻循环刷新 |
+
+`scripts/moect_live.py`（读快照入库）：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `--once` | — | 跑一轮就退出 |
 | `--loop` | — | 常驻循环 |
-| `--interval` | 60 | 刷新间隔（秒） |
+| `--interval` | 60 | 轮询间隔（秒） |
 | `--since-hours` | 24 | 首次回溯多少小时 |
 | `--limit` | 3000 | 单轮最多推送条数 |
-| `--no-refresh` | off | 不触发 Moect 刷新，只读现有快照 |
+| `--no-refresh` | off | **只读写好的快照、不碰 GUI**（当前推荐姿态，刷新交给 headless 任务） |
 | `--keep-snapshots` | off | 不清理旧快照 |
 | `--include-private` | off | 同时采集单聊（**默认只采群聊**） |
+| `--check` | — | 探测 Moect.exe 路径（仅 GUI 回退模式用） |
 
 ### 几个实现细节（踩过的坑）
 
-**单实例锁用回环端口**，不用锁文件。`127.0.0.1:8765` 被占用说明已有实例在跑，第二个进程直接退出——进程崩溃即释放，不会留下需要手动清理的僵尸锁文件。
+**headless 桥绕开整个 GUI 栈**。Moect GUI 的 WebView2 / pythonnet 初始化在本机反复失败（弹「GDI+ Window」fallback 窗口、`__ready` 永不设置、`--smoke` 30 秒超时退出）。而且 `--smoke` 本质只是 UI 回归测试钩子，真正的快照来自前端 React 加载后调 `startup_reconnect`。headless 桥直接 import 源码 `Service` 调 `startup_reconnect()`，轮询任务完成后 `shutdown()`，彻底绕开 GUI。另有两个隐藏陷阱：stdout 接 `DEVNULL` 会让 pythonnet 自杀（必须接真实文件句柄）；新版 Moect 还有教程门控（`tutorials_seen.app` 必须为特定值才自动 reconnect）。
 
-**Moect 是 GUI 程序**，`--smoke` 模式也会弹窗，`SW_HIDE` 对它无效。所以脚本用 `CreateDesktopW` 建了一个隐藏桌面 `MessageHubHeadless`，把 Moect 的界面画在那里，你的主桌面完全无感。创建失败会回退普通启动，只是窗口会闪一下。
+**刷新与采集解耦，各自保活**。`MessageHubHeadless` 任务负责产快照（每 5 分钟，`pythonw.exe` 静默无黑框、12 分钟预算、`IgnoreNew` 防重叠）；`MessageHubWatchdog` 负责拉活 API 和采集器（每 5 分钟）。两者独立，一个挂了不影响另一个。
 
-**刷新后必须杀进程**。`Moect --smoke` 生成快照后 GUI 不会自己退出，`subprocess.run` 会一直阻塞到超时。所以脚本改成轮询新快照出现 → 立即结束进程树。
+**单实例锁用回环端口**，不用锁文件。`127.0.0.1:8765` 被占用说明采集器已有实例在跑，第二个进程直接退出——进程崩溃即释放，不留僵尸锁文件。
 
-**水位回看 5 分钟**。新消息落库可能乱序（`create_time` 相同或倒序），所以水位推进时回退 300 秒覆盖这种抖动。重复由 ingest 端指纹去重兜底，多推不会重复入库。
+**水位回看 5 分钟**。新消息落库可能乱序（`create_time` 相同或倒序），所以水位推进时回退 300 秒覆盖抖动。重复由 ingest 端指纹去重兜底，多推不会重复入库。
 
-**快照恒定一份**。每轮生成的快照会被合并移动到 `runtime/moect_data/archives/current/`，旧的删掉。不清理的话每次刷新都是一个 1.5 GB 的目录，磁盘会炸。清理有路径白名单校验，**永不触碰** `%LOCALAPPDATA%\Moect\archives` 下你自己的快照。
+**快照目录要清理**。Moect 每轮 connect 会在 `archives/<账号ID>/` 下新建一份 `snapshot_*`（单份可达 1.5 GB）。采集器会把新快照合并到 `archives/current/` 并清掉旧副本，避免磁盘被撑爆——清理有路径白名单，**永不触碰** `%LOCALAPPDATA%\Moect\archives` 下你自己的快照。历史快照积压太多时可以只留 `current/`。
 
 ### 常见失败与处理
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| `--check` 显示 Moect ✗ 未找到 | 装在非标准位置 | 按上面的方法在 `.env` 里写 `MOECT_EXE=完整路径` |
-| Moect 解不开密钥 / 报密钥错误 | 微信未登录，或微信刚升级密钥变了 | 先登录微信桌面版并保持运行；重启微信后重跑 Moect；确认微信是 4.x 版本 |
-| 快照目录是空的 | Moect 还没成功跑过一次解密 | 手动打开 Moect 界面完整跑一次导出，看到快照生成后再用本项目的采集器 |
-| `dir "%LOCALAPPDATA%\Moect\archives"` 看不到 `snapshot_*` | 快照位置不在默认处 | 在 Moect 设置里确认导出位置，或检查 `%LOCALAPPDATA%\Moect` 是否存在 |
+| headless 日志报找不到微信进程 | 从带沙箱注入的终端里跑了桥 | 改用装好的计划任务/系统 Python 直跑，别在受限终端里嵌起 |
+| headless 一直等 connect 不完成 | 微信未登录，或 Moect 源码路径不对 | 登录微信桌面版并保持运行；核对 `moect_headless.py` 顶部 `sys.path.insert` 的源码路径 |
+| 快照目录是空的 / 连到 0 会话 | 微信刚升级、密钥变了，或数据目录不在标准位置 | 重启微信重新登录；确认微信 4.x；检查 Moect `config.json` 里 `library.root` 指向 `archives/current` |
 | 采集器报连不上 127.0.0.1:8000 | MessageHub 服务没启动 | 先双击「启动 MessageHub.bat」，等页面能打开再跑采集 |
+| 每 5 分钟弹一个 CMD 黑框 | 计划任务用了 `python.exe` | 确认 `MessageHubHeadless` 的 Execute 指向 `pythonw.exe`（无控制台版本） |
+| `--check` 显示 Moect ✗ 未找到（仅 GUI 模式） | 装在非标准位置 | 在 `.env` 里写 `MOECT_EXE=完整路径` |
 
-排查顺序建议：先跑 `.venv\Scripts\python scripts\moect_live.py --check`，它会一行行告诉你哪项没就绪。
+排查顺序建议：先看 `runtime/moect_headless.log`（快照有没有产出）→ `runtime/moect_live.log`（有没有入库）→ `runtime/watchdog.log`（服务有没有被拉活）。
 
 ### 不用 Moect 可以吗
 
@@ -457,12 +485,58 @@ curl -X POST http://127.0.0.1:8000/api/live/ingest \
 
 | 变量 | 说明 |
 |---|---|
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 任意 OpenAI 兼容接口。不配则降级本地规则 |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `BRIEF_TO` | 简报邮件推送，可选 |
-| `MOECT_EXE` | Moect.exe 路径，可选（有自动探测） |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 任意 OpenAI 兼容接口。不配则降级本地规则/群名标签 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `BRIEF_TO` | 邮件推送（整理邮件 + 加急邮件），可选；`SMTP_PASS` 是邮箱授权码不是登录密码 |
+| `MOECT_EXE` | Moect.exe 路径，仅 GUI 回退模式需要（headless 模式不用） |
 | `HOST` / `PORT` | `PORT` 是**采集器推送目标端口**，需与实际服务端口一致；网页服务端口由启动脚本决定（见下） |
 
-LLM 降级链：多模型重试 → JSON 稳健解析 → 本地规则摘要。**任何一环失败都不影响主流程**，永远有输出，不会假装「今天没有工作信息」。
+LLM 降级链：多模型重试 → JSON 稳健解析 → 本地规则摘要。**任何一环失败都不影响主流程**：标签失败退化为群名、截止解析失败退化为规则、摘要失败不发摘要——绝不会因为 LLM 挂了就不整理、不发信。
+
+---
+
+## 邮件通知机制
+
+邮件的核心价值是**筛选和聚合**，不是转发消息。它有两种，都由 `src/messagehub/digest.py` 驱动：
+
+### 1. 唤醒补扫整理邮件（常规）
+
+服务一启动（开机自启、手动启动、服务重启都算）就跑一次：
+
+1. 读整理水位 `runtime/digest_state.json` 里的 `last_digest_at`，收集这之后的所有工作事件（首次运行回溯最近 3 天）
+2. 提取事件 + 闭环检测，把「已处理」的折到邮件末尾供回顾，不混进待办
+3. LLM 给每条待办打语义标签（课程作业 / 报名截止 / 会议安排…），同类聚一组，再生成一段 80 字以内的人话摘要
+4. 发一封 HTML 邮件：**「[MessageHub] 积压整理 · 日期 · 待办N/ M类」**，按标签分组展示
+5. 发信成功才推进水位；没有未闭环事件就静默不发
+
+水位只在发信成功后推进，发失败不丢事件；`digest_state.json` 跟随数据库路径，测试库有自己的一份，绝不污染生产水位。
+
+### 2. 加急邮件 + 桌面通知（插队）
+
+服务运行期间每 3 分钟扫一次近 3 天的事件，**三个条件同时满足**才加急：
+
+| 条件 | 判定 |
+|---|---|
+| 直接cue | `@你` 或直呼你 |
+| 强指派 | 任务语义分 ≥ 2 且是 assignment 类 |
+| 临近截止 | LLM 把截止原文解析成具体时间，且落在当前 48 小时内 |
+
+三者齐全基本等于「有人明确把一件有时限的事交给你了」。放宽任何一条都会让加急变成骚扰，两周你就会养成忽略这个邮箱的习惯——所以**宁可漏一封，不可滥一封**。加急不限数量，每条按 `message_id` 去重（同一条只发一次），邮件和 Windows 桌面通知双发。没配 LLM 时用规则降级：只认「今天 / 明天」这类高置信截止。
+
+### 关于「快照 vs 增量」
+
+整理邮件是**当前开放待办的一张活快照**，不是逐条消息转发：同一件事没完成前只在整理里出现一次，完成后进「已处理」，不会反复提醒。你甚至可以完全不看你邮箱，等有空时只看最新一封整理邮件就够了。
+
+### 手动触发（调试用）
+
+```bash
+# 前台跑一次补扫并发信（会真实发邮件、推进水位）
+PYTHONPATH=src .venv/Scripts/python.exe -c "from messagehub import digest; print(digest.run_catchup())"
+
+# 只预览不发送、也不推进生产水位
+PYTHONPATH=src .venv/Scripts/python.exe -c "from messagehub import digest; print(digest.run_catchup(send_mail=False))"
+```
+
+> 注意：`send_mail=False` 时仍会推进**当前数据库路径下**的水位。想预览真实库又不污染水位，先备份 `runtime/digest_state.json`，看完再还原。
 
 ---
 
@@ -652,9 +726,23 @@ v0.1.0 及更早版本的 bug：这两个接口在请求线程里同步调 LLM�
 
 ```powershell
 (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run").MessageHub
+Get-ScheduledTask -TaskName "MessageHubHeadless","MessageHubWatchdog" | Select-Object TaskName,State
 ```
 
-输出为空 = 没装上，按[第 8 步](#第-8-步可选开机自启开机后零操作)重装。取消：`scripts\install_autostart.bat uninstall`，或直接删除上面那个注册表值。
+Run 键输出为空 = 没装上，按[第 8 步](#第-8-步可选开机自启开机后零操作)重装。取消：删 Run 键 + 停用两个计划任务（`Disable-ScheduledTask -TaskName ...`）。
+
+**12. 没收到邮件**
+
+按顺序查：
+
+1. `.env` 的 SMTP 五项是否填齐（`BRIEF_TO` 是收件箱，`SMTP_PASS` 是授权码不是登录密码）
+2. 服务日志有没有 `[digest] 唤醒补扫` / `[brief-mail] 已发送` 字样
+3. `runtime/digest_state.json` 是否存在——不存在说明服务没跑起来，或补扫线程报错
+4. 是不是「无事静默」：没有未闭环事件时按设计不发信，收件箱里没有邮件不代表坏了
+
+**13. 加急邮件没触发**
+
+加急要求三个条件**同时**满足（直呼 + 强指派 + 48h 内截止），任一不满足都不会发——这是刻意设计的防骚扰门槛。另外加急需要 LLM 能解析出具体截止时间；没配 LLM 时只认「今天 / 明天」这类高置信说法。日志里加急检查会写明每条为什么没通过（如「截止偏远」「非强指派」）。
 
 ---
 
@@ -664,7 +752,7 @@ v0.1.0 及更早版本的 bug：这两个接口在请求线程里同步调 LLM�
 pytest -q
 ```
 
-110 项测试，全部隔离在临时库，**绝不碰生产数据**。
+118 项测试，全部隔离在临时库，**绝不碰生产数据**。
 
 测试用 `tests/fixtures/personal_test.json` 这套虚构身份（真名「张三」、群名「工作群甲」），不读你的 `config/personal.json`。所以测试结果不会随个人配置漂移，别人 clone 下来直接能跑。
 
@@ -676,26 +764,29 @@ pytest -q
 
 | 原则 | 实现 |
 |---|---|
-| **不发送任何消息** | 全程只读，没有任何发送接口 |
-| **不点击、不置前** | 不操作微信界面；Moect 跑在隐藏桌面 |
-| **不改原始数据库** | 只读 Moect 已生成的明文快照 |
+| **不向微信发任何消息** | 全程只读，不操作微信界面，没有任何发送消息的接口 |
+| **不开 GUI、不置前** | headless 桥直接调源码，无窗口；计划任务用 `pythonw.exe` 静默运行 |
+| **不改原始数据库** | 只读 Moect 产出的明文快照，不改微信自己的库 |
 | **只监听回环** | 默认 `127.0.0.1:8000`，不对外暴露 |
-| **只采群聊** | 默认跳过单聊，`--include-private` 才放开 |
+| **只采群聊** | 默认跳过单聊，`--include-private` 才放开；私聊分级见配置 |
 | **密钥不落地** | 脚本只复制 Moect 的 `keys.json`，从不读取内容 |
+| **邮件是唯一外发通道** | 只发到你 `.env` 里配置的 `BRIEF_TO` 收件箱，内容是整理后的待办，不是原始聊天记录 |
 | **敏感文件隔离** | `.env`、`config/personal.json`、`runtime/`、`imports/` 全部 gitignore |
 | **提交前拦截** | `scripts/install_hooks.py` 装 pre-commit 钩子，拦 `.env`、密钥、含聊天正文的产物 |
 
-**你的聊天记录不会离开这台机器。** 唯一的外部调用是可选的 LLM 摘要——如果配了 LLM，简报生成时会把事件文本（不含完整上下文）发给你配置的接口。不想要就把 `LLM_*` 全留空，走本地规则。
+**你的聊天正文不会离开这台机器。** 外部调用只有两处，都可关：① 配了 LLM 时，整理/加急判定会把事件文本片段（不含完整上下文）发给你自己配置的接口；不想要就把 `LLM_*` 留空，走本地规则降级。② 配了 SMTP 时，整理后的待办摘要发到你的邮箱——这是主动设计的功能，不配则不发。
 
 ---
 
 ## 已知限制
 
-- **准实时，不是毫秒推送**。延迟 = 刷新间隔（默认 120 秒）。每轮会短暂启动 Moect，有约 1.5 GB 的同盘文件搬运，所以别把间隔设太短。
+- **准实时，不是毫秒推送**。快照刷新间隔 5 分钟，采集间隔 120 秒；加急检查每 3 分钟。每轮刷新会搬运约 1.5 GB 的快照文件，别把间隔设太短。
+- **headless 桥绑定本机 Moect 源码路径**。改机器或升级 Moect 版本时，要同步更新 `moect_headless.py` 顶部的源码路径，并检查教程门控常量（`TUTORIAL_REVISION`）。GPL 源码需自行 clone，不随本项目分发。
 - **Moect 通道仅 Windows**。macOS / Linux 只能走 `/api/live/ingest` 或文件导入。
+- **加急判定偏保守**。三个条件同时满足才发，缺 LLM 时只认「今天 / 明天」——可能漏掉一些其实挺急但表述模糊的事。这是刻意的取舍：宁可漏一封，不可滥一封。
+- **邮件依赖外部 SMTP / LLM**。没配 LLM 时标签退化为群名、加急截止只走规则；没配 SMTP 时完全不发邮件，只能在网页看。
 - **QQ 明文通道未接**。QQ NT 的库是 SQLCipher 加密，需要可用的上游工具。
 - **规则引擎是启发式的**。中文表达太灵活，总有漏判和误判。规则集中在 `rules.py`，可以直接改正则。
-- **依赖 Moect 的稳定性**。Moect 版本更新可能改变快照结构，届时需要调整 `build_maps` 里的表名反查逻辑。
 
 ---
 
@@ -716,35 +807,40 @@ MessageHub/
 │   ├── database.py              SQLite schema（唯一定义点）
 │   ├── rules.py                 工作事件提取引擎
 │   ├── resolution.py            闭环检测
-│   ├── brief.py                 简报生成与落库
-│   ├── schedule.py              定时调度（8 点日报 + 整点滚动）
-│   ├── mail.py                  简报邮件桥
+│   ├── brief.py                 网页简报生成与落库（按需，不自动发信）
+│   ├── digest.py                ★ 唤醒补扫 + 加急分流引擎（LLM 标签 / 截止解析 / 水位去重）
+│   ├── schedule.py              后台调度（启动补扫一次 + 每 3 分钟加急检查）
+│   ├── mail.py                  邮件桥（整理邮件 / 加急邮件 / 旧网页简报）
+│   ├── desktop_notify.py        Windows 桌面通知（加急时用）
 │   ├── adapters/registry.py     导出格式解析器注册表
 │   ├── pipeline/
 │   │   ├── importer.py          统一导入与指纹去重
 │   │   ├── live.py              实时采集器（tail / uia / ingest 三源）
 │   │   ├── watcher.py           目录扫描与增量状态
 │   │   └── extract.py           规则 + LLM 任务提取
-│   ├── routers/                 tasks / memories / live / brief
+│   ├── routers/                 tasks / memories / live / brief / scope
 │   ├── llm/provider.py          OpenAI 兼容客户端与降级链
-│   └── templates/               四个页面
+│   └── templates/               页面模板
 ├── scripts/
-│   ├── moect_live.py            ★ Moect 采集桥（单实例锁、隐藏桌面、增量水位）
+│   ├── moect_headless.py        ★ headless 快照桥（直接调 Moect 源码 Service.connect）
+│   ├── moect_live.py            采集桥（只读快照、单实例锁、增量水位）
+│   ├── watchdog.ps1             看门狗：保活 API + 采集器（计划任务每 5 分钟）
+│   ├── autostart_silent.vbs     静默启动器（注册表 Run 键）
 │   ├── db_bridge.py             备用桥接（chatlog HTTP / 已解密 SQLite / JSONL）
 │   ├── push_message.py          命令行推送
 │   ├── build_memories_report.py 生成离线「去年今日」HTML
 │   ├── install_hooks.py         安装 pre-commit 钩子
 │   └── install_autostart.bat    开机自启安装
-├── tests/                       110 项测试
+├── tests/                       118 项测试
 ├── imports/                     你的导出文件（gitignore）
-└── runtime/                     数据库 / 日志 / 快照（gitignore）
+└── runtime/                     数据库 / 日志 / 快照 / digest 水位（gitignore）
 ```
 
 ---
 
 ## 贡献
 
-Issue 和 PR 都欢迎。改规则引擎前先跑 `pytest -q`，110 项测试锁住了已知的所有判读案例。
+Issue 和 PR 都欢迎。改规则引擎前先跑 `pytest -q`，118 项测试锁住了已知的所有判读案例。
 
 复现环境直接双击 `setup.bat`（或看上面的[快速开始（开发者）](#快速开始开发者)）。
 

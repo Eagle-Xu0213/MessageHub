@@ -133,6 +133,121 @@ def send_brief_email(brief: Dict[str, Any], force: bool = False) -> Dict[str, An
         return {"sent": False, "detail": f"{type(e).__name__}: {e}"}
 
 
+def _event_row(ev: Dict[str, Any], show_tag: bool = False) -> str:
+    """整理/加急邮件里的一条事件行。"""
+    from html import escape as e
+    tag = ""
+    if show_tag and ev.get("semantic_tag"):
+        tag = (f'<span style="display:inline-block;background:#eef2ff;color:#4338ca;'
+               f'font-size:11px;padding:1px 7px;border-radius:10px;margin-right:6px;">'
+               f'{e(str(ev["semantic_tag"]))}</span>')
+    ddl = ""
+    if ev.get("deadline"):
+        ddl = f'<div style="color:#d9381e;font-size:12px;margin-top:3px;">⏰ {e(ev["deadline"])}</div>'
+    reason = ""
+    if ev.get("urgent_reason"):
+        reason = (f'<div style="color:#b45309;font-size:12px;margin-top:3px;">'
+                  f'⚡ 加急判定：{e(ev["urgent_reason"])}</div>')
+    return (
+        f'<div style="padding:9px 0;border-bottom:1px solid #f0f0f0;">'
+        f'<div style="font-size:12px;color:#8a94a6;">{tag}'
+        f'<b style="color:#4f46e5;">{e(ev.get("conversation_name") or "")}</b> · '
+        f'{e(ev.get("sender_name") or "")} · {e((ev.get("sent_at") or "")[:16])}</div>'
+        f'<div style="font-size:14px;color:#333;margin-top:3px;">{e(ev.get("text") or "")}</div>'
+        f'{ddl}{reason}</div>'
+    )
+
+
+def render_digest_html(payload: Dict[str, Any]) -> str:
+    """唤醒补扫整理邮件：按语义标签分组，已闭环折叠在末尾。"""
+    from html import escape as e
+    groups = payload.get("groups", {})
+    st = payload.get("stats", {})
+    blocks = []
+    for tag, events in groups.items():
+        rows = "".join(_event_row(ev, show_tag=False) for ev in events)
+        blocks.append(
+            f'<div style="margin:16px 0;">'
+            f'<h3 style="color:#1a73e8;font-size:14px;margin:0 0 6px;">'
+            f'{e(tag)} <span style="color:#8a94a6;font-weight:400;">({len(events)})</span></h3>'
+            f'{rows}</div>')
+    resolved_block = ""
+    resolved = payload.get("resolved") or []
+    if resolved:
+        rows = "".join(_event_row(ev) for ev in resolved[:20])
+        resolved_block = (
+            f'<div style="margin:20px 0;opacity:0.65;">'
+            f'<h3 style="color:#389e0d;font-size:14px;margin:0 0 6px;">'
+            f'已处理（{len(resolved)}）</h3>{rows}</div>')
+    summary = payload.get("summary") or ""
+    summary_block = ""
+    if summary:
+        summary_block = (
+            f'<div style="background:#f0fdf4;border-left:4px solid #16a34a;'
+            f'padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.7;margin:14px 0;">'
+            f'{e(summary)}</div>')
+    since = payload.get("since") or "初次整理"
+    return f"""<div style="font-family:-apple-system,'Microsoft YaHei',sans-serif;max-width:640px;margin:0 auto;color:#2c3e50;">
+  <h2 style="color:#1a73e8;">📋 积压整理 · {e(payload.get('date',''))}</h2>
+  <div style="font-size:12px;color:#8a94a6;margin-bottom:10px;">自 {e(str(since)[:16])} 以来</div>
+  {summary_block}
+  <div style="font-size:12px;color:#8a94a6;margin:12px 0;">待处理 {st.get('open',0)} · 分类 {st.get('groups',0)} · 已闭环 {st.get('resolved',0)}</div>
+  {''.join(blocks) or '<div style="color:#999;">无待处理事项</div>'}
+  {resolved_block}
+  <hr style="margin-top:24px;border:none;border-top:1px solid #eee;">
+  <div style="font-size:11px;color:#aaa;">由 MessageHub 唤醒补扫自动生成 · {e(payload.get('generated_at',''))}</div>
+</div>"""
+
+
+def render_urgent_html(payload: Dict[str, Any]) -> str:
+    """加急邮件：单条事件，突出判定依据。"""
+    from html import escape as e
+    ev = payload.get("event", {})
+    return f"""<div style="font-family:-apple-system,'Microsoft YaHei',sans-serif;max-width:640px;margin:0 auto;color:#2c3e50;">
+  <h2 style="color:#d9381e;">⚡ 加急任务 · 需要你处理</h2>
+  <div style="background:#fff7e6;border-left:4px solid #fa8c16;padding:12px 14px;border-radius:8px;margin:14px 0;">
+    {_event_row(ev, show_tag=False)}
+  </div>
+  <div style="font-size:11px;color:#aaa;">由 MessageHub 加急分流自动发出 · {e(payload.get('generated_at',''))}</div>
+</div>"""
+
+
+def _send_html(subject: str, html_body: str) -> Dict[str, Any]:
+    cfg = _smtp_config()
+    if not cfg:
+        return {"sent": False, "detail": "SMTP 未配置"}
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = Header(subject, "utf-8")
+    msg["From"] = cfg["user"]
+    msg["To"] = cfg["to"]
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    try:
+        with smtplib.SMTP_SSL(cfg["host"], int(cfg["port"]), timeout=20) as s:
+            s.login(cfg["user"], cfg["pass"])
+            s.sendmail(cfg["user"], [cfg["to"]], msg.as_string())
+        print(f"[brief-mail] 已发送 {subject} → {cfg['to']}")
+        return {"sent": True, "detail": subject}
+    except Exception as e:
+        print(f"[brief-mail] 发送失败: {type(e).__name__}: {e}")
+        return {"sent": False, "detail": f"{type(e).__name__}: {e}"}
+
+
+def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
+    st = payload.get("stats", {})
+    if not st.get("open") and not st.get("resolved"):
+        return {"sent": False, "detail": "空整理，静默"}
+    subject = (f"[MessageHub] 积压整理 {payload.get('date','')} · "
+               f"待办{st.get('open',0)} / {st.get('groups',0)}类")
+    return _send_html(subject, render_digest_html(payload))
+
+
+def send_urgent_email(payload: Dict[str, Any]) -> Dict[str, Any]:
+    ev = payload.get("event", {})
+    group = ev.get("conversation_name") or ""
+    subject = f"[MessageHub] ⚡加急 · {group} · {(ev.get('text') or '')[:24]}"
+    return _send_html(subject, render_urgent_html(payload))
+
+
 def register() -> None:
     """把本模块注册为调度器通知钩子（幂等）。"""
     from messagehub.schedule import register_notify_hook

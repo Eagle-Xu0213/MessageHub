@@ -89,10 +89,22 @@ def _seconds_until_next(hour: int, minute: int = 0) -> float:
 
 
 class BriefScheduler:
-    """简报定时线程：每天 08:00 生成 + 每小时滚动检查。"""
+    """后台调度线程（2026-11-20 重构）。
 
-    def __init__(self, morning_hour: int = 8, check_interval_sec: int = 3600):
-        self.morning_hour = morning_hour
+    旧行为（已停用）：每天 08:00 + 每小时整点生成简报并发邮件。
+    问题：定时点和你开电脑时间无关，离开期间的积压靠固定钟点兜不住；
+    8 点服务没起就直接漏掉，整点增量又和看消息流差不多。
+
+    新行为：
+    - 线程启动时跑一次「唤醒补扫」——把上次整理水位到现在的积压事件
+      用 LLM 打标签分组，发一封整理邮件（见 digest.run_catchup）。
+    - 之后每 check_interval_sec（默认 3 分钟）跑一次「加急检查」——
+      直呼 + 指派 + 48h 内截止的事件立即发邮件 + 桌面通知（digest.run_urgent_check）。
+    - 不再自动调用 generate_and_advance；网页简报仍由 /brief 页面按需生成。
+    """
+
+    def __init__(self, morning_hour: int = 8, check_interval_sec: int = 180):
+        self.morning_hour = morning_hour  # 保留参数兼容旧调用/测试
         self.check_interval_sec = check_interval_sec
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -104,10 +116,10 @@ class BriefScheduler:
             return {"started": False, "reason": "already running"}
         self._stop.clear()
         self.state["running"] = True
-        self._thread = threading.Thread(target=self._run, name="brief-scheduler",
+        self._thread = threading.Thread(target=self._run, name="digest-scheduler",
                                         daemon=True)
         self._thread.start()
-        return {"started": True, "morning_hour": self.morning_hour}
+        return {"started": True, "check_interval_sec": self.check_interval_sec}
 
     def stop(self) -> Dict[str, Any]:
         self._stop.set()
@@ -117,37 +129,30 @@ class BriefScheduler:
         return {"stopped": True}
 
     def _run(self):
-        # 启动时若当天还没有简报且基线后有消息 → 立即补一份
-        try:
-            if has_new_events_since_baseline():
-                generate_and_advance(reason="startup_catchup")
-                self.state["last_run"] = now_cn_iso()
-                self.state["last_reason"] = "startup_catchup"
-        except Exception as e:
-            print(f"[brief-scheduler] 启动补发失败: {e}")
+        from messagehub import digest
 
-        next_morning = _seconds_until_next(self.morning_hour)
-        next_check = float(self.check_interval_sec)
+        # 启动即唤醒补扫：整理离开期间的积压（LLM 调用在线程内，不阻塞服务启动）
+        try:
+            result = digest.run_catchup()
+            self.state["last_run"] = now_cn_iso()
+            self.state["last_reason"] = "wakeup_catchup"
+            print(f"[digest] 唤醒补扫: {result.get('event_count',0)} 事件, "
+                  f"发出={result.get('sent')}")
+        except Exception as e:
+            print(f"[digest] 唤醒补扫失败: {type(e).__name__}: {e}")
+
         while not self._stop.is_set():
-            wait = min(next_morning, next_check)
-            if self._stop.wait(timeout=wait):
+            if self._stop.wait(timeout=float(self.check_interval_sec)):
                 break
-            now = datetime.now(CN_TZ)
-            fired = None
-            if next_morning <= next_check:
-                fired = "morning"
-            else:
-                fired = "hourly" if has_new_events_since_baseline() else None
             try:
-                if fired:
-                    generate_and_advance(reason=fired)
+                result = digest.run_urgent_check()
+                if result.get("urgent_count"):
                     self.state["last_run"] = now_cn_iso()
-                    self.state["last_reason"] = fired
+                    self.state["last_reason"] = "urgent_check"
+                    print(f"[digest] 加急检查: {result['urgent_count']} 条, "
+                          f"邮件={result['sent']} 桌面={result['desktop']}")
             except Exception as e:
-                print(f"[brief-scheduler] {fired} 生成失败: {e}")
-            # 重置两个计时器（都从现在起算）
-            next_morning = _seconds_until_next(self.morning_hour)
-            next_check = float(self.check_interval_sec)
+                print(f"[digest] 加急检查失败: {type(e).__name__}: {e}")
 
 
 _scheduler: Optional[BriefScheduler] = None

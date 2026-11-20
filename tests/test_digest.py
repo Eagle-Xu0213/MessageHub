@@ -110,6 +110,50 @@ def test_run_catchup_advances_watermark_only_on_success(tmp_path, monkeypatch):
     assert digest.load_state()["last_digest_at"] is not None
 
 
+def test_catchup_excludes_already_urgent_events(tmp_path, monkeypatch):
+    """已加急发过的事件不再进常规汇总，避免同一件事打扰两次。"""
+    state_file = tmp_path / "state.json"
+    monkeypatch.setattr(digest, "STATE_FILE", state_file)
+    # 预置：message_id=99 已加急发过
+    st = digest._empty_state()
+    st["urgent_sent_ids"] = [99, "99"]
+    digest.save_state(st)
+
+    normal = {
+        "message_id": 10, "sent_at": _ts(), "conversation_name": "课程群",
+        "sender_name": "老师", "text": "普通作业提醒", "event_type": "notice",
+        "reply_status": "unanswered",
+    }
+    already_urgent = dict(normal, message_id=99, text="这条已加急发过")
+    monkeypatch.setattr(
+        digest, "collect_events_since", lambda *a, **k: [normal, already_urgent])
+    monkeypatch.setattr(digest, "tag_events", lambda evs, llm: [
+        dict(e, semantic_tag="课程作业") for e in evs])
+
+    result = digest.run_catchup(send_mail=False)
+    assert result["event_count"] == 1, "已加急的那条应被排除"
+    assert result["deduped_urgent_count"] == 1
+    assert result["skipped"] is None
+
+
+def test_catchup_kind_recorded_in_state(tmp_path, monkeypatch):
+    """kind 区分补扫/汇总，并记录到状态轨迹，便于排障。"""
+    state_file = tmp_path / "state.json"
+    monkeypatch.setattr(digest, "STATE_FILE", state_file)
+    ev = {
+        "message_id": 11, "sent_at": _ts(), "conversation_name": "项目群",
+        "sender_name": "同事", "text": "更新一下进度", "event_type": "notice",
+        "reply_status": "unanswered",
+    }
+    monkeypatch.setattr(digest, "collect_events_since", lambda *a, **k: [ev])
+    monkeypatch.setattr(digest, "tag_events", lambda evs, llm: [
+        dict(e, semantic_tag="项目进度") for e in evs])
+
+    r = digest.run_catchup(send_mail=False, kind="hourly")
+    assert r["kind"] == "hourly"
+    assert digest.load_state()["last_digest_kind"] == "hourly"
+
+
 def test_urgent_dedup(tmp_path, monkeypatch):
     """同一条加急消息只发一次（message_id 去重）。"""
     state_file = tmp_path / "state.json"

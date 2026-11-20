@@ -22,7 +22,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from messagehub.config import BASE_DIR, CN_TZ, DB_PATH, now_cn_iso
 from messagehub.llm.provider import LLMProvider
@@ -269,8 +269,14 @@ def group_by_tag(events: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]
 # ---------------- 主入口 ----------------
 
 def run_catchup(force: bool = False,
-                send_mail: bool = True) -> Dict[str, Any]:
-    """唤醒补扫：整理水位之后的所有事件，发一封整理邮件，推进水位。
+                send_mail: bool = True,
+                kind: str = "catchup") -> Dict[str, Any]:
+    """整理水位之后的所有事件，发一封汇总邮件，推进水位。
+
+    同一个引擎服务两种触发（用户 2026-11-20 最终确认）：
+    - kind="catchup"：服务启动时唤醒补扫，整理「上次关机 → 现在」的积压
+    - kind="hourly"：常驻期间每小时汇总，整理「上一小时 → 现在」的新增
+    两者共用同一个水位（last_digest_at），所以天然不重叠、不漏。
 
     force=True 忽略"无事件不发"保护（手动调试用）。
     send_mail=False 只生成结果不发信（测试/预览用）。
@@ -278,12 +284,19 @@ def run_catchup(force: bool = False,
     state = load_state()
     since = state.get("last_digest_at")
     events = collect_events_since(since)
+    # 已单独加急发过的事件不再塞进汇总，避免同一件事打扰两次
+    urgent_ids = {str(x) for x in (state.get("urgent_sent_ids") or [])}
+    before_dedup = len(events)
+    events = [e for e in events if str(e.get("message_id")) not in urgent_ids]
+    deduped_count = before_dedup - len(events)
     open_events = [e for e in events if e.get("reply_status") not in RESOLVED_STATES]
     resolved = [e for e in events if e.get("reply_status") in RESOLVED_STATES]
 
     result: Dict[str, Any] = {
+        "kind": kind,
         "since": since,
         "event_count": len(events),
+        "deduped_urgent_count": deduped_count,
         "open_count": len(open_events),
         "resolved_count": len(resolved),
         "sent": False,
@@ -318,7 +331,7 @@ def run_catchup(force: bool = False,
     if send_mail:
         from messagehub import mail
         payload = {
-            "kind": "digest",
+            "kind": kind,  # catchup=开机补扫 / hourly=每小时汇总
             "date": now_cn_iso()[:10],
             "since": since,
             "groups": groups,
@@ -339,6 +352,7 @@ def run_catchup(force: bool = False,
     if result["sent"] or not send_mail:
         state["last_digest_at"] = now_cn_iso()
         state["last_digest_run"] = now_cn_iso()
+        state["last_digest_kind"] = kind
         save_state(state)
     return result
 

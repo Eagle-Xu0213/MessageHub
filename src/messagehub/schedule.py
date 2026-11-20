@@ -1,10 +1,14 @@
-"""简报调度器（R4）：按节奏自动生成简报 + 推进基线 + 触发通知钩子。
+"""邮件整理调度器：唤醒补扫 + 加急插队 + 每小时汇总。
 
-节奏（用户确认的设计）：
-- 每天 08:00 生成「今日待办」简报（事件窗口：上次简报之后的新消息），
-  生成后把基线推进到生成时刻，实现滚动监测——昨天看过的事件不再重复出现。
-- 每小时整点滚动检查：有新事件才重新生成并推进；无新事件保持沉默。
-- 紧急事件（工作群 @我/指派 + 截止词）由采集链路即时推送钩子（R5 邮件桥接此）。
+2026-11-20 重构后的三条发信路径（全部走 digest 引擎，共用一个整理水位）：
+- 服务启动：立即「唤醒补扫」（kind=catchup），整理「上次关机 → 现在」的积压。
+- 每 3 分钟：「加急检查」，直呼+指派+48h内截止的事件立即发邮件+桌面通知。
+- 每 1 小时：「常规汇总」（kind=hourly），整理这一小时新增的普通工作事件。
+空档静默、已发不重复；目标是用户无需打开微信翻群也不漏事、不被滥打扰。
+
+旧的「每天 08:00 简报 + 整点滚动 + 推送钩子」机制已停用（定时点与你开机
+时间无关、积压兜不住、增量邮件近似消息流）。generate_and_advance 等函数
+保留仅为网页 /brief 按需生成简报使用，调度器不再自动调用。
 
 实现：独立 daemon 线程挂在 FastAPI lifespan 上，与采集器线程并存。
 生成走同步 SQLite + 可选 LLM，全部在 worker 线程执行，不碰事件循环。
@@ -95,17 +99,24 @@ class BriefScheduler:
     问题：定时点和你开电脑时间无关，离开期间的积压靠固定钟点兜不住；
     8 点服务没起就直接漏掉，整点增量又和看消息流差不多。
 
-    新行为：
-    - 线程启动时跑一次「唤醒补扫」——把上次整理水位到现在的积压事件
-      用 LLM 打标签分组，发一封整理邮件（见 digest.run_catchup）。
-    - 之后每 check_interval_sec（默认 3 分钟）跑一次「加急检查」——
-      直呼 + 指派 + 48h 内截止的事件立即发邮件 + 桌面通知（digest.run_urgent_check）。
+    新行为（用户 2026-11-20 最终确认的完整机制）：
+    - 线程启动时跑一次「唤醒补扫」（kind=catchup）——把上次整理水位到现在的
+      积压事件用 LLM 打标签分组，发一封整理邮件（见 digest.run_catchup）。
+    - 之后两个独立计时器并行：
+      · 每 check_interval_sec（默认 3 分钟）跑「加急检查」——直呼 + 指派 +
+        48h 内截止的事件立即发邮件 + 桌面通知（digest.run_urgent_check）。
+      · 每 hourly_interval_sec（默认 1 小时）跑「常规汇总」（kind=hourly）——
+        把这一小时新增的普通工作事件整理成邮件（digest.run_catchup）。
+      两者共用同一个整理水位，互不重叠；空档静默，已发不重复。
+    - 目标：用户平时无需打开微信翻群，急事插队、一般事定时送达，都不漏。
     - 不再自动调用 generate_and_advance；网页简报仍由 /brief 页面按需生成。
     """
 
-    def __init__(self, morning_hour: int = 8, check_interval_sec: int = 180):
+    def __init__(self, morning_hour: int = 8, check_interval_sec: int = 180,
+                 hourly_interval_sec: int = 3600):
         self.morning_hour = morning_hour  # 保留参数兼容旧调用/测试
         self.check_interval_sec = check_interval_sec
+        self.hourly_interval_sec = hourly_interval_sec
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.state: Dict[str, Any] = {"running": False, "last_run": None,
@@ -119,7 +130,8 @@ class BriefScheduler:
         self._thread = threading.Thread(target=self._run, name="digest-scheduler",
                                         daemon=True)
         self._thread.start()
-        return {"started": True, "check_interval_sec": self.check_interval_sec}
+        return {"started": True, "check_interval_sec": self.check_interval_sec,
+                "hourly_interval_sec": self.hourly_interval_sec}
 
     def stop(self) -> Dict[str, Any]:
         self._stop.set()
@@ -133,7 +145,7 @@ class BriefScheduler:
 
         # 启动即唤醒补扫：整理离开期间的积压（LLM 调用在线程内，不阻塞服务启动）
         try:
-            result = digest.run_catchup()
+            result = digest.run_catchup(kind="catchup")
             self.state["last_run"] = now_cn_iso()
             self.state["last_reason"] = "wakeup_catchup"
             print(f"[digest] 唤醒补扫: {result.get('event_count',0)} 事件, "
@@ -141,18 +153,40 @@ class BriefScheduler:
         except Exception as e:
             print(f"[digest] 唤醒补扫失败: {type(e).__name__}: {e}")
 
+        # 两个独立倒计时：谁先到就先触发谁，触发后各自重置，互不干扰。
+        # 单线程顺序执行，不存在并发写水位的问题。
+        urgent_countdown = float(self.check_interval_sec)
+        hourly_countdown = float(self.hourly_interval_sec)
         while not self._stop.is_set():
-            if self._stop.wait(timeout=float(self.check_interval_sec)):
+            wait = min(urgent_countdown, hourly_countdown)
+            if self._stop.wait(timeout=wait):
                 break
-            try:
-                result = digest.run_urgent_check()
-                if result.get("urgent_count"):
-                    self.state["last_run"] = now_cn_iso()
-                    self.state["last_reason"] = "urgent_check"
-                    print(f"[digest] 加急检查: {result['urgent_count']} 条, "
-                          f"邮件={result['sent']} 桌面={result['desktop']}")
-            except Exception as e:
-                print(f"[digest] 加急检查失败: {type(e).__name__}: {e}")
+            urgent_countdown -= wait
+            hourly_countdown -= wait
+            # 每小时常规汇总（先于加急判断，顺序无关，共用水位）
+            if hourly_countdown <= 0:
+                hourly_countdown = float(self.hourly_interval_sec)
+                try:
+                    result = digest.run_catchup(kind="hourly")
+                    if result.get("sent"):
+                        self.state["last_run"] = now_cn_iso()
+                        self.state["last_reason"] = "hourly_digest"
+                        print(f"[digest] 每小时汇总: {result.get('event_count',0)} 事件, "
+                              f"发出={result.get('sent')}")
+                except Exception as e:
+                    print(f"[digest] 每小时汇总失败: {type(e).__name__}: {e}")
+            # 加急检查
+            if urgent_countdown <= 0:
+                urgent_countdown = float(self.check_interval_sec)
+                try:
+                    result = digest.run_urgent_check()
+                    if result.get("urgent_count"):
+                        self.state["last_run"] = now_cn_iso()
+                        self.state["last_reason"] = "urgent_check"
+                        print(f"[digest] 加急检查: {result['urgent_count']} 条, "
+                              f"邮件={result['sent']} 桌面={result['desktop']}")
+                except Exception as e:
+                    print(f"[digest] 加急检查失败: {type(e).__name__}: {e}")
 
 
 _scheduler: Optional[BriefScheduler] = None

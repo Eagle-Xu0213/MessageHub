@@ -187,15 +187,18 @@ def render_digest_html(payload: Dict[str, Any]) -> str:
             f'padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.7;margin:14px 0;">'
             f'{e(summary)}</div>')
     since = payload.get("since") or "初次整理"
+    kind = payload.get("kind") or "catchup"
+    title = "每小时工作汇总" if kind == "hourly" else "积压整理"
+    since_label = "最近一小时" if kind == "hourly" else f"自 {e(str(since)[:16])} 以来"
     return f"""<div style="font-family:-apple-system,'Microsoft YaHei',sans-serif;max-width:640px;margin:0 auto;color:#2c3e50;">
-  <h2 style="color:#1a73e8;">📋 积压整理 · {e(payload.get('date',''))}</h2>
-  <div style="font-size:12px;color:#8a94a6;margin-bottom:10px;">自 {e(str(since)[:16])} 以来</div>
+  <h2 style="color:#1a73e8;">📋 {title} · {e(payload.get('date',''))}</h2>
+  <div style="font-size:12px;color:#8a94a6;margin-bottom:10px;">{since_label}</div>
   {summary_block}
   <div style="font-size:12px;color:#8a94a6;margin:12px 0;">待处理 {st.get('open',0)} · 分类 {st.get('groups',0)} · 已闭环 {st.get('resolved',0)}</div>
   {''.join(blocks) or '<div style="color:#999;">无待处理事项</div>'}
   {resolved_block}
   <hr style="margin-top:24px;border:none;border-top:1px solid #eee;">
-  <div style="font-size:11px;color:#aaa;">由 MessageHub 唤醒补扫自动生成 · {e(payload.get('generated_at',''))}</div>
+  <div style="font-size:11px;color:#aaa;">由 MessageHub {'每小时汇总' if kind == 'hourly' else '唤醒补扫'}自动生成 · {e(payload.get('generated_at',''))}</div>
 </div>"""
 
 
@@ -236,7 +239,9 @@ def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
     st = payload.get("stats", {})
     if not st.get("open") and not st.get("resolved"):
         return {"sent": False, "detail": "空整理，静默"}
-    subject = (f"[MessageHub] 积压整理 {payload.get('date','')} · "
+    kind = payload.get("kind") or "catchup"
+    label = "每小时汇总" if kind == "hourly" else "积压整理"
+    subject = (f"[MessageHub] {label} {payload.get('date','')} · "
                f"待办{st.get('open',0)} / {st.get('groups',0)}类")
     return _send_html(subject, render_digest_html(payload))
 

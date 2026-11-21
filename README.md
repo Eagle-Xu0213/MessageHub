@@ -606,6 +606,15 @@ PYTHONPATH=src .venv/Scripts/python.exe -c "from messagehub import digest; print
 
 词表覆盖不了的说法还有第二道保险：配置了 LLM 时，每小时汇总前会对仍判为「未答复」的事件做一次**语义复核**——把事件原文和之后的群聊上下文交给 LLM 判断「这件事是否已经不需要你做什么」。判为办结的同样归入已处理；LLM 失败或解析不出就维持原判（宁可多提醒，不假装已办）。
 
+### 版本更新提示
+
+已安装的实例会自己检查上游是否有新版本：打开首页时后台查一次 GitHub（结果缓存 1 小时，失败静默不影响使用）。发现有新版时页首出现一条可关闭的横幅，提示当前版本、最新版本和更新命令（`git pull` + 重启服务）。
+
+- 上游发了 Release → 按语义化版本比较，只在新版本**更高**时提示
+- 没发过 Release → 回退比较 main 分支最新 commit，有新提交就提示
+- 手动强查：`curl http://127.0.0.1:8000/api/version?refresh=1`
+- 发新版本的流程：改 `src/messagehub/__init__.py` 的 `__version__` → push → GitHub 发 Release（tag 如 `v0.1.1`），装出去的实例下次打开首页就能看到
+
 ---
 
 ## 页面与 API
@@ -623,6 +632,7 @@ PYTHONPATH=src .venv/Scripts/python.exe -c "from messagehub import digest; print
 
 ```
 GET  /api/health                              健康检查
+GET  /api/version?refresh=1                   本地 vs 上游版本比对（refresh 强制重查）
 POST /api/import                              上传 JSONL/JSON/CSV/TXT 导入
 POST /api/scan                                扫描 imports/ 目录并自动提取任务
 GET  /api/capture-status                      采集状态

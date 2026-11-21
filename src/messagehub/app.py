@@ -22,8 +22,9 @@ from messagehub.pipeline.live import get_collector
 from messagehub.routers import brief, live, memories, tasks, scope
 from messagehub import schedule
 from messagehub import mail as brief_mail
+from messagehub import update
 
-app = FastAPI(title="MessageHub", version="0.1.0")
+app = FastAPI(title="MessageHub", version=update.__version__)
 
 
 @asynccontextmanager
@@ -137,6 +138,7 @@ async def index(request: None = None):
             capture_errors=capture_errors,
             conversations=conversations[:10],  # 最近 10 个群
             today_by_group=today_by_group,
+            app_version=update.__version__,
         )
     )
 
@@ -145,7 +147,16 @@ async def index(request: None = None):
 @app.get("/health")
 async def health_check():
     """健康检查（两个路径都支持，避免外部探测脚本误判）"""
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": update.__version__}
+
+
+@app.get("/api/version")
+async def version_check(refresh: bool = False):
+    """本地版本 + 上游最新版本比对。
+
+    refresh=1 强制绕过缓存重查 GitHub；默认 1 小时缓存。
+    """
+    return update.get_update_status(force=refresh)
 
 
 @app.post("/api/import")

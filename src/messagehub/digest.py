@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from messagehub.config import BASE_DIR, CN_TZ, DB_PATH, now_cn_iso
 from messagehub.llm.provider import LLMProvider
+from messagehub import personal
 from messagehub.rules import extract_events
 from messagehub.resolution import enrich_events_with_resolution
 
@@ -109,10 +110,14 @@ def _load_messages_since(since: Optional[str], days: int) -> List[Dict[str, Any]
 
 
 def collect_events_since(since: Optional[str],
-                         days: int = DEFAULT_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
+                         days: int = DEFAULT_LOOKBACK_DAYS,
+                         llm: Optional[LLMProvider] = None
+                         ) -> List[Dict[str, Any]]:
     """提取水位之后的工作事件，并附带闭环状态。
 
     闭环分析用「水位前 30 天」的消息做上下文，避免刚跨水位的事件被误判为未答复。
+    llm 传入且可用时，对规则判 unanswered 的事件追加 LLM 语义复核（R1.2）；
+    llm 为 None（默认）时行为与旧版完全一致，测试/离线路径不受影响。
     """
     msgs = _load_messages_since(since, days)
     if not msgs:
@@ -121,6 +126,89 @@ def collect_events_since(since: Optional[str],
     # 由 enrich 的窗口决定，通常 15 条内，本批已足够覆盖绝大多数场景）
     events = extract_events(msgs)
     events = enrich_events_with_resolution(events, msgs)
+    if llm and llm.enabled:
+        events = llm_verify_resolution(events, msgs, llm)
+    return events
+
+
+# ---------------- LLM 闭环复核 ----------------
+
+# 单事件复核时给 LLM 看的后续消息条数上限（防止长流水账稀释语义）
+_VERIFY_CONTEXT_MESSAGES = 20
+
+
+def _reply_context(event: Dict[str, Any],
+                   messages: List[Dict[str, Any]],
+                   limit: int = _VERIFY_CONTEXT_MESSAGES) -> str:
+    """拼事件之后的群消息（你的发言标注"我"），供 LLM 判断是否已办结。"""
+    ev_id = event.get("message_id")
+    my = set(personal.MY_SENDER_NAMES)
+    lines = []
+    started = False
+    for m in messages:
+        if not started:
+            if m.get("id") == ev_id:
+                started = True
+            continue
+        who = "我" if (m.get("sender_name") or "").strip() in my else (m.get("sender_name") or "?")
+        text = (m.get("text") or "").strip()
+        if text:
+            lines.append(f"{who}: {text[:100]}")
+        if len(lines) >= limit:
+            break
+    return "\n".join(lines)
+
+
+def llm_verify_resolution(events: List[Dict[str, Any]],
+                          messages: List[Dict[str, Any]],
+                          llm: Optional[LLMProvider] = None) -> List[Dict[str, Any]]:
+    """对规则判为 unanswered 的事件做 LLM 批量语义复核（R1.2）。
+
+    词表闭环只认口头禅（好的/已经发了），覆盖不了「人家要文件、
+    你直接把文件发过去（[文件] 占位符之前的旧消息）」「你回复了实质
+    内容但没说收到」这类语义层面的办结。这里把事件原文+后续上下文
+    交给 LLM 判断："这件事是否已经不需要用户再做什么"。
+
+    - 只复核 unanswered 的事件（其他状态信任规则结果）
+    - 判为 done → reply_status=answered_ok，evidence 记 LLM 依据
+    - LLM 失败/解析失败 → 原样保留 unanswered（宁可多提醒，不装已办）
+    - 修改的是入参列表，返回同一引用，调用方无感
+    """
+    pending = [e for e in events if e.get("reply_status") == "unanswered"]
+    if not pending or not (llm and llm.enabled):
+        return events
+
+    my = set(personal.MY_SENDER_NAMES)
+    lines = []
+    ctx_by_id: Dict[int, str] = {}
+    for i, ev in enumerate(pending):
+        ctx = _reply_context(ev, messages)
+        ctx_by_id[i] = ctx
+        lines.append(
+            f"事件{i}: [{ev.get('conversation_name')}] "
+            f"{ev.get('sender_name')}: {(ev.get('text') or '')[:120]}\n"
+            f"之后的群消息:\n{ctx or '(无)'}")
+    prompt = (
+        "下面是若干条工作事件和事件后的群聊消息。判断每条事件是否已经办结——"
+        "即用户自己已完成交付（如已把文件发到群里）、已明确答复、或事情已被别人"
+        "接手/取消，用户不再需要做任何事。\n"
+        "注意：事件后别人追问/催促 = 未办结；[文件][图片] 是占位符，"
+        "看它出现在谁的消息里。\n"
+        "严格返回 JSON：{\"results\": [true/false, ...]}，数组顺序与事件编号一致。\n"
+        + "\n\n".join(lines)
+    )
+    data = llm.chat_json(prompt, timeout=60.0)
+    results = data.get("results") if data else None
+    if not isinstance(results, list) or len(results) != len(pending):
+        # 解析失败 → 保持原状（unanswered），宁可多提醒
+        return events
+
+    by_msg_id = {m.get("id"): m for m in messages}
+    for i, ev in enumerate(pending):
+        if results[i] is True:
+            ev["reply_status"] = "answered_ok"
+            ev["reply_evidence"] = "LLM 判定已办结"
+    # 回填消息数，日志可见
     return events
 
 
@@ -283,7 +371,8 @@ def run_catchup(force: bool = False,
     """
     state = load_state()
     since = state.get("last_digest_at")
-    events = collect_events_since(since)
+    llm = LLMProvider.from_env()
+    events = collect_events_since(since, llm=llm)
     # 已单独加急发过的事件不再塞进汇总，避免同一件事打扰两次
     urgent_ids = {str(x) for x in (state.get("urgent_sent_ids") or [])}
     before_dedup = len(events)
@@ -307,7 +396,6 @@ def run_catchup(force: bool = False,
         save_state(state)
         return result
 
-    llm = LLMProvider.from_env()
     tagged = tag_events(open_events, llm)
     groups = group_by_tag(tagged)
 

@@ -35,6 +35,19 @@ class TestClassifyReply:
         ("收到", "ack"),
         ("去不了", "decline"),
         ("没空", "decline"),
+        # 交付表达（R1.2 扩展）：无"已经"前缀的自然说法
+        ("pdf 发群里了", "doing"),
+        ("文档见上条", "doing"),
+        ("报名表已经填好发过去了", "doing"),
+        ("表格已发你", "doing"),
+        ("文件在群里", "doing"),
+        # 媒体占位符：直接把文件发出去 = 交付
+        ("[文件]", "doing"),
+        ("[图片]", "doing"),
+        # 占位符带文字说明时仍走词表逻辑
+        ("[文件] 这是修改版，再看下", None),
+        # 语音不算交付：常是应答闲聊而非办事
+        ("[语音]", None),
     ])
     def test_cases(self, text, expect):
         assert _classify_reply(text) == expect
@@ -90,6 +103,29 @@ class TestAnalyzeResolution:
         ev = {"message_id": 1, "conversation_name": "工作群甲",
               "event_type": "notice"}
         assert analyze_resolution(ev, msgs)["reply_status"] == "answered_ok"
+
+    def test_media_placeholder_closes_loop(self):
+        # 用户要的材料 → 我直接发 [文件]，应判已交付闭环（R1.2 核心场景）
+        msgs = [
+            _m(1, "2026-11-17T10:00+08:00", "李四", "@自动化2401张三 把报名表发我一下"),
+            _m(2, "2026-11-17T10:05+08:00", MY, "[文件]"),
+        ]
+        ev = {"message_id": 1, "conversation_name": "工作群甲",
+              "event_type": "assignment"}
+        res = analyze_resolution(ev, msgs)
+        assert res["reply_status"] == "answered_ok"
+        assert res["reply_evidence"] == "[文件]"
+
+    def test_deliver_phrase_closes_loop(self):
+        # 人家让写东西 → "写好了 发群里了" → 闭环
+        msgs = [
+            _m(1, "2026-11-17T10:00+08:00", "李四", "总结报告今天要交一下"),
+            _m(2, "2026-11-17T11:30+08:00", MY, "写好了 发群里了"),
+        ]
+        ev = {"message_id": 1, "conversation_name": "工作群甲",
+              "event_type": "assignment"}
+        res = analyze_resolution(ev, msgs)
+        assert res["reply_status"] == "answered_ok"
 
     def test_window_limit(self):
         # 超出窗口的用户回复不计

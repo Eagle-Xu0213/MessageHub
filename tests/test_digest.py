@@ -183,3 +183,93 @@ def test_urgent_dedup(tmp_path, monkeypatch):
     assert r1["urgent_count"] == 1
     assert r2["urgent_count"] == 0, "已发过的加急消息不应再次触发"
     assert calls["n"] == 1
+
+
+# ---------------- R1.2 LLM 闭环复核 ----------------
+
+class _FakeLLM:
+    """模拟 LLMProvider：enabled 开关可控，chat_json 返回预设结果。"""
+
+    def __init__(self, data=None, enabled=True):
+        self.enabled = enabled
+        self.data = data
+        self.calls = []
+
+    def chat_json(self, prompt, timeout=60.0, **kw):
+        self.calls.append(prompt)
+        return self.data
+
+
+def test_llm_verify_marks_semantically_done(monkeypatch):
+    """规则判 unanswered + LLM 判 done → answered_ok，且 evidence 落地。"""
+    messages = [
+        {"id": 1, "sent_at": "2026-11-20T10:00+08:00", "conversation_name": "群",
+         "sender_name": "老师", "text": "把实验数据发我"},
+        {"id": 2, "sent_at": "2026-11-20T10:01+08:00", "conversation_name": "群",
+         "sender_name": "老师", "text": "在吗"},
+    ]
+    ev = {"message_id": 1, "conversation_name": "群", "event_type": "assignment",
+          "text": "把实验数据发我", "reply_status": "unanswered"}
+    llm = _FakeLLM(data={"results": [True]})
+    out = digest.llm_verify_resolution([ev], messages, llm)
+    assert out[0]["reply_status"] == "answered_ok"
+    assert "LLM" in (out[0]["reply_evidence"] or "")
+
+
+def test_llm_verify_keeps_unanswered_when_llm_says_no():
+    """LLM 判未办结 → 保持 unanswered，继续提醒。"""
+    messages = [
+        {"id": 1, "sent_at": "2026-11-20T10:00+08:00", "conversation_name": "群",
+         "sender_name": "老师", "text": "明天交材料"},
+    ]
+    ev = {"message_id": 1, "conversation_name": "群", "event_type": "assignment",
+          "text": "明天交材料", "reply_status": "unanswered"}
+    llm = _FakeLLM(data={"results": [False]})
+    out = digest.llm_verify_resolution([ev], messages, llm)
+    assert out[0]["reply_status"] == "unanswered"
+
+
+def test_llm_verify_degrades_gracefully(monkeypatch):
+    """LLM 挂了/输出坏 JSON → 原样保留 unanswered，绝不误标已办结。"""
+    messages = [
+        {"id": 1, "sent_at": "2026-11-20T10:00+08:00", "conversation_name": "群",
+         "sender_name": "老师", "text": "明天交材料"},
+    ]
+    ev = {"message_id": 1, "conversation_name": "群", "event_type": "assignment",
+          "text": "明天交材料", "reply_status": "unanswered"}
+
+    for bad in (_FakeLLM(data=None),                      # 调用失败
+                _FakeLLM(data={"results": "bad"}),        # 形状不对
+                _FakeLLM(data={"results": [True, False]}),  # 长度不匹配
+                _FakeLLM(enabled=False)):                 # LLM 未配置
+        copy = dict(ev)
+        out = digest.llm_verify_resolution([copy], messages, bad)
+        assert out[0]["reply_status"] == "unanswered", f"降级失败: {bad.data}"
+
+
+def test_llm_verify_skips_already_resolved():
+    """规则已判闭环的事件不进复核（只处理 unanswered）。"""
+    messages = []
+    ev = {"message_id": 1, "conversation_name": "群", "event_type": "assignment",
+          "text": "x", "reply_status": "answered_ok"}
+    llm = _FakeLLM(data={"results": []})
+    out = digest.llm_verify_resolution([ev], messages, llm)
+    assert out[0]["reply_status"] == "answered_ok"
+    assert llm.calls == [], "没有 unanswered 事件时不应发起 LLM 调用"
+
+
+def test_collect_events_since_passes_llm_through(monkeypatch):
+    """collect_events_since 的 llm 参数透传给复核函数。"""
+    seen = {}
+
+    def fake_verify(events, msgs, llm):
+        seen["llm"] = llm
+        return events
+
+    msgs = [{"id": 1, "sent_at": "2026-11-20T10:00+08:00", "conversation_name": "群",
+             "sender_name": "老师", "text": "hi"}]
+    monkeypatch.setattr(digest, "_load_messages_since", lambda s, d: msgs)
+    monkeypatch.setattr(digest, "llm_verify_resolution", fake_verify)
+    llm = _FakeLLM()
+    digest.collect_events_since(None, llm=llm)
+    assert seen["llm"] is llm

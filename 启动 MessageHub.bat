@@ -67,7 +67,6 @@ echo   Python : %PYTHON%
 echo   项目   : %ROOT%
 echo.
 echo   工作台      : http://127.0.0.1:8000/
-echo   去年今日    : http://127.0.0.1:8000/memories
 echo   实时消息流  : http://127.0.0.1:8000/live
 echo.
 echo   保持此窗口开启即可使用，关闭窗口即停止服务。

@@ -1,7 +1,7 @@
 """可选 LLM 提供者：OpenAI Chat Completions 兼容接口。
 
 - 配置 API 密钥后启用；部分请求失败时会尝试第三方备用服务。
-- 总结功能具备完整降级链：多模型重试 → JSON 稳健解析 → 本地规则摘要。
+- 结构化请求支持多模型重试和 JSON 解析。
 - 任何失败都不影响主流程。
 """
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections import Counter
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -57,61 +56,8 @@ def _extract_json(content: str) -> Optional[dict]:
     return None
 
 
-def _rule_based_summary(messages: List[Dict[str, Any]], conversation: str,
-                        date: str) -> Dict[str, Any]:
-    """LLM 完全不可用时的本地规则降级摘要，保证功能永远有输出。"""
-    texts = [str(m.get("text") or "").strip() for m in messages]
-    meaningful = [
-        t for t in texts
-        if t and not re.fullmatch(r"\[[^\]]{1,12}\]", t) and len(t) >= 2
-    ]
-
-    senders = Counter(str(m.get("sender_name") or "未知") for m in messages)
-    top_senders = [f"{name}（{cnt} 条）" for name, cnt in senders.most_common(5)]
-
-    hours = Counter()
-    for m in messages:
-        mt = re.search(r"T(\d{2}):", str(m.get("sent_at") or ""))
-        if mt:
-            hours[int(mt.group(1))] += 1
-    peak_hours = hours.most_common(3)
-
-    quotes = sorted(
-        [t for t in meaningful if re.search(r"[\u4e00-\u9fff]", t) and len(t) >= 8],
-        key=len, reverse=True,
-    )[:5]
-
-    words = Counter()
-    for t in meaningful:
-        for w in re.findall(r"[\u4e00-\u9fff]{2,6}", t):
-            words[w] += 1
-    topics = [w for w, cnt in words.most_common(8) if cnt >= 2][:5]
-
-    time_desc = ""
-    if peak_hours:
-        time_desc = "、".join(f"{h:02d}:00" for h, _ in peak_hours) + " 前后最活跃"
-
-    return {
-        "topic_summary": (
-            f"{date} 当天「{conversation}」共产生 {len(messages)} 条消息，"
-            f"{len(senders)} 位成员参与，{time_desc or '全天均有交流'}。"
-        ),
-        "key_events": [
-            f"全天累计 {len(messages)} 条消息，其中 {len(meaningful)} 条为文字内容",
-            f"最活跃成员：{'、'.join(top_senders[:3]) or '暂无'}",
-            f"交流高峰时段：{time_desc or '分布较均匀'}",
-        ],
-        "main_topics": topics or ["日常交流"],
-        "representative_quotes": quotes or ["（当天多为图片、表情等短消息）"],
-        "atmosphere": "轻松活跃的群聊日常",
-        "message_count": len(messages),
-        "source_note": "基于数据库真实消息生成（本地规则降级摘要）",
-        "degraded": True,
-    }
-
-
 class LLMProvider:
-    """OpenAI 兼容的结构化任务提取 / 回顾总结接口。"""
+    """OpenAI 兼容的结构化任务提取接口。"""
 
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None,
                  model: Optional[str] = None, enabled: bool = False):
@@ -256,104 +202,4 @@ class LLMProvider:
                 "status": "uncertain",
             }
         except Exception:
-            return None
-
-    def summarize_memories(
-        self,
-        messages: List[Dict[str, Any]],
-        conversation: str,
-        date: str
-    ) -> Optional[Dict[str, Any]]:
-        """生成「去年今日」回顾摘要。
-
-        健壮性：兼容推理模型空 content、markdown 代码块 JSON、429 限流退避；
-        LLM 彻底不可用时降级为本地规则摘要，保证永远有输出。
-        """
-        fallback = _rule_based_summary(messages, conversation, date)
-        if not self.enabled:
-            return fallback
-
-        try:
-            import httpx
-        except ImportError:
-            return fallback
-
-        lines = []
-        for msg in messages:
-            sender = str(msg.get("sender_name") or "未知")
-            text = str(msg.get("text") or "").strip()
-            if text:
-                lines.append(f"[{sender}]: {text}")
-        text_sample = "\n".join(lines)
-        if len(text_sample) > 16000:
-            text_sample = text_sample[:16000] + "\n...（后续消息略）"
-
-        prompt = (
-            f"你是 AI 聊天回顾助手。根据以下真实聊天记录，为 '{conversation}' 在 '{date}' 这一天生成结构化总结。\n\n"
-            f"聊天记录：\n{text_sample}\n\n"
-            "严格返回 JSON 对象（不要 markdown 代码块、不要解释文字）：\n"
-            '{"topic_summary":"一句话概括当天主要讨论内容",'
-            '"key_events":["值得回忆的事件1","事件2","事件3"],'
-            '"main_topics":["话题1","话题2","话题3"],'
-            '"representative_quotes":["原文摘录1","原文摘录2","原文摘录3"],'
-            '"atmosphere":"整体氛围描述",'
-            '"message_count":' + str(len(messages)) + ','
-            '"source_note":"基于数据库真实消息生成"}\n\n'
-            "要求：只依据真实消息，不要编造；引用原话必须是聊天记录里出现过的句子。"
-        )
-
-        data = self.chat_json(prompt, timeout=90.0)
-        if data:
-            data.setdefault("message_count", len(messages))
-            data.setdefault("source_note", "基于数据库真实消息生成")
-            data["degraded"] = False
-            return data
-
-        print("[LLM] 所有模型均失败，使用本地规则降级摘要")
-        return fallback
-
-    def generate_overview(
-        self,
-        group_summaries: List[Dict[str, Any]],
-        total_date: str
-    ) -> Optional[Dict[str, Any]]:
-        """生成跨群的「去年今日总览」。"""
-        if not self.enabled:
-            return None
-        try:
-            import httpx
-        except ImportError:
-            return None
-
-        overview_text = "\n\n".join([
-            f"【{g.get('conversation_name', '未知群')}】\n主题：{g.get('topic_summary', '无')}\n"
-            f"事件：{', '.join(g.get('key_events', []))}\n话题：{', '.join(g.get('main_topics', []))}"
-            for g in group_summaries
-        ])
-        prompt = (
-            f"以下是 {total_date} 这天所有群聊的回顾摘要：\n{overview_text}\n\n"
-            "请生成一个跨群的总体概览，返回 JSON：\n"
-            '{"overall_topic":"当天的整体讨论主题",'
-            '"highlight_groups":["重点参与的群聊"],'
-            '"common_themes":["共同话题"],'
-            '"cross_group_events":["跨群聊的事件或讨论"],'
-            '"total_groups":' + str(len(group_summaries)) + ','
-            '"source_note":"基于多个群聊的真实消息汇总生成"}\n\n'
-            "注意：不编造任何未提及的内容。"
-        )
-        try:
-            with httpx.Client(timeout=30.0) as c:
-                r = c.post(
-                    self._endpoint(),
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,
-                    },
-                )
-                r.raise_for_status()
-                return _extract_json(r.json()["choices"][0]["message"]["content"])
-        except Exception as e:
-            print(f"LLM 总览生成失败：{e}")
             return None

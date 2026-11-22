@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 移除
+
+- 移除“去年今日”的页面、接口、离线报告生成及专用摘要代码；保留已有聊天数据和历史报告。下方旧版本记录仅供追溯。
+
 ### 新增
 
 - **个人任务持久管线（task_pipeline / task_runtime）**：增量分批处理新消息，保守分类生成 `personal_tasks` 表（pending / accepted / in_progress / completed / review 五态），带截止时间解析与分类标签；后台调度器读快照完成标记（`snapshot_generation.json`）触发处理，替换旧 digest 调度成为默认任务流。`/api/personal-tasks` 系列接口 + 工作台任务面板与后台状态展示

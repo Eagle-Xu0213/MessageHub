@@ -436,3 +436,45 @@ def test_selected_contacts_require_work_signal(monkeypatch):
         assert classify(dict(msg,text='请吃饭')) is None
         assert classify(dict(msg,text='请提交项目材料'))['status'] == 'pending'
     assert classify({'conversation_name':'不检测联系人','conversation_id':'wxid_other','sender_name':'不检测联系人','sent_at':datetime.now(CN_TZ).isoformat(),'text':'请提交材料'}) is None
+
+def test_email_requires_explicit_opt_in_and_complete_config(monkeypatch):
+    from messagehub import mail
+
+    for key, value in {
+        "SMTP_HOST": "smtp.example.invalid",
+        "SMTP_PORT": "465",
+        "SMTP_USER": "sender@example.invalid",
+        "SMTP_PASS": "test-only",
+        "BRIEF_TO": "recipient@example.invalid",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    monkeypatch.delenv("MESSAGEHUB_EMAIL_ENABLED", raising=False)
+    assert mail.email_status() == "disabled"
+    assert mail._smtp_config() is None
+    monkeypatch.setenv("MESSAGEHUB_EMAIL_ENABLED", "1")
+    assert mail.email_status() == "ready"
+    monkeypatch.setenv("SMTP_PORT", "invalid")
+    assert mail.email_status() == "incomplete"
+
+def test_email_settings_api_keeps_authorization_code_private(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from messagehub.app import app
+    from messagehub import mail
+
+    monkeypatch.setattr(mail, "_settings_path", lambda: tmp_path / "email_settings.json")
+    client = TestClient(app, base_url="http://localhost:8000")
+    headers = {"Origin": "http://localhost:8000"}
+    url = "/api/settings/email"
+    data = {"enabled": True, "host": "smtp.example.invalid", "port": "465",
+            "user": "sender@example.invalid", "pass": "fixture-only",
+            "to": "recipient@example.invalid"}
+    assert client.put(url, json=data, headers={"Origin": "http://other.invalid"}).status_code == 403
+    saved = client.put(url, json=data, headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["has_password"]
+    assert "fixture-only" not in saved.text
+    assert "fixture-only" not in client.get(url).text
+    data.update(enabled=False, **{"pass": ""})
+    assert client.put(url, json=data, headers=headers).json()["has_password"]
+    assert mail.email_status() == "disabled"

@@ -208,3 +208,47 @@ def test_main_commit_falls_back_to_git_when_api_unavailable(monkeypatch):
     monkeypatch.setattr('httpx.Client', offline)
     monkeypatch.setattr(update.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, 0, 'a'*40+'\trefs/heads/main\n', ''))
     assert update._main_commit(force=True) == 'a' * 40
+
+
+def test_commit_relation_tracks_ahead_behind_and_divergence(tmp_path, monkeypatch):
+    import subprocess
+    from messagehub import config
+
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=tmp_path, capture_output=True,
+                              text=True, check=True).stdout.strip()
+
+    git('init', '-b', 'main')
+    git('config', 'user.email', 'test@example.invalid')
+    git('config', 'user.name', 'Test')
+    git('commit', '--allow-empty', '-m', 'base')
+    base = git('rev-parse', 'HEAD')
+    git('commit', '--allow-empty', '-m', 'local')
+    local = git('rev-parse', 'HEAD')
+    git('checkout', '-b', 'other', base)
+    git('commit', '--allow-empty', '-m', 'remote')
+    other = git('rev-parse', 'HEAD')
+    monkeypatch.setattr(config, 'BASE_DIR', tmp_path)
+    assert update._commit_relation(local, local) == 'same'
+    assert update._commit_relation(local, base) == 'ahead'
+    assert update._commit_relation(base, local) == 'behind'
+    assert update._commit_relation(local, other) == 'diverged'
+    assert update._commit_relation(local, 'f' * 40) == 'unknown'
+
+
+def test_ahead_checkout_has_no_false_update(monkeypatch):
+    monkeypatch.setattr(update, '_local_commit', lambda: 'a' * 40)
+    monkeypatch.setattr(update, '_main_commit', lambda force=False: 'b' * 40)
+    monkeypatch.setattr(update, '_commit_relation', lambda local, remote: 'ahead')
+    status = update.get_update_status()
+    assert status['relation'] == 'ahead'
+    assert status['has_update'] is False
+
+
+def test_diverged_checkout_does_not_offer_one_click_update(monkeypatch):
+    monkeypatch.setattr(update, '_local_commit', lambda: 'a' * 40)
+    monkeypatch.setattr(update, '_main_commit', lambda force=False: 'b' * 40)
+    monkeypatch.setattr(update, '_commit_relation', lambda local, remote: 'diverged')
+    status = update.get_update_status()
+    assert status['has_update'] is True
+    assert status['can_update'] is False

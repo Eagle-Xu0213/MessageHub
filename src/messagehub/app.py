@@ -167,6 +167,34 @@ async def dashboard_capture():
         return {"status": "unknown", "last_sync": None, "tool": "Moect"}
 
 
+def _check_local_email_request(request: Request, *, writing: bool = False) -> None:
+    host = request.headers.get("host")
+    if host not in ("localhost:8000", "127.0.0.1:8000"):
+        raise HTTPException(403, "请在本机工作台配置邮件通知")
+    if writing and request.headers.get("origin") != f"http://{host}":
+        raise HTTPException(403, "请从本机设置页面保存")
+
+
+@app.get("/api/settings/email")
+def email_settings(request: Request):
+    _check_local_email_request(request)
+    return JSONResponse(brief_mail.public_settings(), headers={"Cache-Control": "no-store"})
+
+
+@app.put("/api/settings/email")
+async def update_email_settings(request: Request):
+    _check_local_email_request(request, writing=True)
+    if request.headers.get("content-type", "").split(";")[0] != "application/json":
+        raise HTTPException(415, "需要 JSON 格式")
+    try:
+        brief_mail.save_settings(await request.json())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc) if type(exc) is ValueError else "邮件配置格式无效") from None
+    except OSError:
+        raise HTTPException(500, "无法保存邮件配置，请检查运行目录权限") from None
+    return JSONResponse(brief_mail.public_settings(), headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/health")
 @app.get("/health")
 async def health_check():

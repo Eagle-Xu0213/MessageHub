@@ -183,15 +183,43 @@ def fetch_remote(force: bool = False, timeout: float = 5.0) -> Dict[str, Any]:
     return result
 
 
+def _commit_relation(local: str, remote: str) -> str:
+    """Compare commits already present locally; do not fetch or alter the checkout."""
+    from messagehub.config import BASE_DIR
+    if local == remote:
+        return 'same'
+    try:
+        def ancestor(first, second):
+            result = subprocess.run(['git', 'merge-base', '--is-ancestor', first, second],
+                                    cwd=BASE_DIR, capture_output=True, timeout=5,
+                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            return result.returncode
+        remote_in_local = ancestor(remote, local)
+        if remote_in_local == 0:
+            return 'ahead'
+        local_in_remote = ancestor(local, remote)
+        if local_in_remote == 0:
+            return 'behind'
+        if remote_in_local == 1 and local_in_remote == 1:
+            return 'diverged'
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # The remote commit may not exist in the local object database yet.
+    return 'unknown'
+
+
 def get_update_status(force: bool = False) -> Dict[str, Any]:
     """本地 vs 上游比对，给前端/首页用的最终形态。"""
     local_commit = _local_commit()
     if local_commit:
         remote_commit = _main_commit(force=force)
+        relation = _commit_relation(local_commit, remote_commit) if remote_commit else 'unknown'
         return {'local_version': __version__, 'local_commit': local_commit[:7],
                 'upstream_version': remote_commit[:7] if remote_commit else None,
-                'upstream_type': 'commit', 'has_update': bool(remote_commit and local_commit != remote_commit),
-                'can_update': sys.platform == 'win32', 'checked': bool(remote_commit),
+                'upstream_type': 'commit',
+                'has_update': bool(remote_commit and relation in ('behind', 'diverged', 'unknown')),
+                'can_update': sys.platform == 'win32' and relation != 'diverged',
+                'relation': relation, 'checked': bool(remote_commit),
                 'release_url': f'https://github.com/{REPO}/commits/main'}
     remote = fetch_remote(force=force)
     remote_ver = remote.get("upstream_version")

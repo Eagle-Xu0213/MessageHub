@@ -423,7 +423,7 @@ def send_due_alerts(conn: sqlite3.Connection, send_mail, send_desktop,
             success, error = deliver(send_mail, event)
             record(task, 'mail', success, error)
             result['mail'] += int(success)
-        if pending(task, 'desktop'):
+        if send_desktop is not None and pending(task, 'desktop'):
             pending_desktop.append(task)
 
     if pending_desktop:

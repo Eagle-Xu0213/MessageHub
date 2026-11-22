@@ -50,8 +50,6 @@ class TaskScheduler:
             return False
 
     def _run(self):
-        catchup_done = False
-        next_catchup = 0.0
         next_hour = time.monotonic() + self.hourly_seconds
         while not self._stop.is_set():
             try:
@@ -60,7 +58,17 @@ class TaskScheduler:
                     # Drain queued message batches before summaries or alerts.
                     if batch['processed'] >= 200:
                         continue
+                    email_ready = mail.email_status() == 'ready'
                     task_pipeline.send_due_alerts(conn, None, desktop_notify.notify_urgent)
+                    if email_ready:
+                        task_pipeline.send_due_alerts(
+                            conn, lambda event: mail.send_urgent_email({'event': event}),
+                            None,
+                        )
+                    if time.monotonic() >= next_hour:
+                        next_hour = time.monotonic() + self.hourly_seconds
+                        if email_ready:
+                            task_pipeline.send_current_digest(conn, mail.send_digest_email)
                     ready = self.snapshot_ready()
                     self.state['capture'] = '补扫完成' if ready else '等待微信新快照'
                     self.state['last_error'] = None

@@ -4,6 +4,7 @@
 AI 助手读取并统一规划日程——简报发到邮箱，后续处理交给读邮件的工具。
 
 配置（.env，全部可选；不配则只在网页显示简报，不发信）：
+  MESSAGEHUB_EMAIL_ENABLED=1
   SMTP_HOST=smtp.qq.com
   SMTP_PORT=465
   SMTP_USER=your-account@qq.com
@@ -16,8 +17,12 @@ AI 助手读取并统一规划日程——简报发到邮箱，后续处理交�
 from __future__ import annotations
 
 import html
+import json
+import tempfile
+import threading
 import os
 import smtplib
+import ssl
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -34,17 +39,88 @@ except ImportError:
     pass
 
 
-def _smtp_config() -> Optional[Dict[str, str]]:
-    cfg = {
-        "host": os.getenv("SMTP_HOST", "smtp.qq.com"),
-        "port": os.getenv("SMTP_PORT", "465"),
-        "user": os.getenv("SMTP_USER", ""),
-        "pass": os.getenv("SMTP_PASS", ""),
-        "to": os.getenv("BRIEF_TO", ""),
+_settings_lock = threading.Lock()
+
+
+def _settings_path() -> Path:
+    from messagehub.config import DB_PATH
+    return DB_PATH.parent / "email_settings.json"
+
+
+def _settings() -> dict:
+    try:
+        return json.loads(_settings_path().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {
+            "enabled": os.getenv("MESSAGEHUB_EMAIL_ENABLED") == "1",
+            "host": os.getenv("SMTP_HOST", "smtp.qq.com"),
+            "port": os.getenv("SMTP_PORT", "465"),
+            "user": os.getenv("SMTP_USER", ""),
+            "pass": os.getenv("SMTP_PASS", ""),
+            "to": os.getenv("BRIEF_TO", ""),
+        }
+    except (OSError, ValueError):
+        return {"enabled": False}
+
+
+def _ready(cfg: dict) -> bool:
+    try:
+        return 1 <= int(cfg["port"]) <= 65535 and all(
+            cfg[key].strip() for key in ("host", "user", "pass", "to")
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def public_settings() -> dict:
+    cfg = _settings()
+    return {
+        **{key: cfg.get(key, "") for key in ("host", "port", "user", "to")},
+        "enabled": bool(cfg.get("enabled")),
+        "has_password": bool(cfg.get("pass")),
     }
-    if not (cfg["user"] and cfg["pass"] and cfg["to"]):
-        return None
-    return cfg
+
+
+def save_settings(data: dict) -> None:
+    if not isinstance(data, dict) or type(data.get("enabled")) is not bool:
+        raise ValueError("请选择是否启用邮件通知。")
+    cfg = {"enabled": data["enabled"]}
+    for key in ("host", "port", "user", "pass", "to"):
+        value = data.get(key, "")
+        if not isinstance(value, str) or len(value) > 512 or any(c in value for c in "\r\n\x00"):
+            raise ValueError("邮件配置格式无效。")
+        cfg[key] = value.strip()
+    if cfg["port"] and (not cfg["port"].isdigit() or not 1 <= int(cfg["port"]) <= 65535):
+        raise ValueError("端口须为 1 至 65535。")
+    with _settings_lock:
+        if not cfg["pass"]:
+            old = _settings()
+            if cfg["host"] == old.get("host") and cfg["user"] == old.get("user"):
+                cfg["pass"] = old.get("pass", "")
+        if cfg["enabled"] and not _ready(cfg):
+            raise ValueError("启用前请填写完整的 SMTP 设置与授权码。")
+        path = _settings_path()
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         dir=path.parent, delete=False) as handle:
+            temp = Path(handle.name)
+            try:
+                json.dump(cfg, handle, ensure_ascii=False)
+                handle.close()
+                temp.replace(path)
+            finally:
+                temp.unlink(missing_ok=True)
+
+
+def email_status() -> str:
+    cfg = _settings()
+    if not cfg.get("enabled"):
+        return "disabled"
+    return "ready" if _ready(cfg) else "incomplete"
+
+
+def _smtp_config() -> Optional[Dict[str, str]]:
+    cfg = _settings()
+    return cfg if cfg.get("enabled") and _ready(cfg) else None
 
 
 def render_brief_html(brief: Dict[str, Any]) -> str:
@@ -123,14 +199,13 @@ def send_brief_email(brief: Dict[str, Any], force: bool = False) -> Dict[str, An
     msg.attach(MIMEText(render_brief_html(brief), "html", "utf-8"))
 
     try:
-        with smtplib.SMTP_SSL(cfg["host"], int(cfg["port"]), timeout=20) as s:
+        with smtplib.SMTP_SSL(cfg["host"], int(cfg["port"]), timeout=20, context=ssl.create_default_context()) as s:
             s.login(cfg["user"], cfg["pass"])
             s.sendmail(cfg["user"], [cfg["to"]], msg.as_string())
         print(f"[brief-mail] 已发送 {subject} → {cfg['to']}")
         return {"sent": True, "detail": f"{subject} → {cfg['to']}"}
     except Exception as e:
-        print(f"[brief-mail] 发送失败: {type(e).__name__}: {e}")
-        return {"sent": False, "detail": f"{type(e).__name__}: {e}"}
+        return {"sent": False, "detail": type(e).__name__}
 
 
 def _event_row(ev: Dict[str, Any], show_tag: bool = False) -> str:
@@ -225,11 +300,10 @@ def _send_html(subject: str, html_body: str) -> Dict[str, Any]:
     msg["To"] = cfg["to"]
     msg.attach(MIMEText(html_body, "html", "utf-8"))
     try:
-        with smtplib.SMTP_SSL(cfg["host"], int(cfg["port"]), timeout=20) as s:
+        with smtplib.SMTP_SSL(cfg["host"], int(cfg["port"]), timeout=20, context=ssl.create_default_context()) as s:
             s.login(cfg["user"], cfg["pass"])
             s.sendmail(cfg["user"], [cfg["to"]], msg.as_string())
-        print(f"[brief-mail] 已发送 {subject} → {cfg['to']}")
-        return {"sent": True, "detail": subject}
+        return {"sent": True, "detail": "邮件已发送"}
     except Exception as e:
         print(f"[brief-mail] 发送失败: {type(e).__name__}: {e}")
         return {"sent": False, "detail": f"{type(e).__name__}: {e}"}

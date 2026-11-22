@@ -2,7 +2,7 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 const style = {setProperty(){}};
-const context = {window:{addEventListener(){}}, document:{documentElement:{style},addEventListener(){},hidden:false}, localStorage:{getItem(){return null}}, location:{hostname:'test',search:''}, URLSearchParams, Date, setInterval(){}};
+const context = {window:{addEventListener(){}}, document:{documentElement:{style},addEventListener(){},hidden:false}, localStorage:{getItem(){return null}}, location:{hostname:'test',search:''}, URLSearchParams, Date, setInterval(){}, clearInterval(){}};
 vm.runInNewContext(fs.readFileSync('src/messagehub/static/ambient.js','utf8'), context);
 const calculate=context.window.MessageHubAmbient.calculate;
 for(const boundary of [0,6,10,14,17,20,24]){

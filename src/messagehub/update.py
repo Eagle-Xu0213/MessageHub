@@ -53,20 +53,30 @@ def _main_commit(force: bool = False) -> Optional[str]:
     cached = _load_cache() if not force else None
     if cached and cached.get('main_commit'):
         return cached['main_commit']
+    sha = None
     try:
         import httpx
         with httpx.Client(timeout=5, headers={'User-Agent': 'MessageHub-update-check',
                                              'Accept': 'application/vnd.github+json'}) as client:
             response = client.get(MAIN_URL)
-            if response.status_code != 200:
-                return None
-            sha = response.json().get('sha', '')
-            if len(sha) != 40 or any(ch not in '0123456789abcdef' for ch in sha):
-                return None
-            _save_cache({'main_commit': sha})
-            return sha
+            if response.status_code == 200:
+                sha = response.json().get('sha', '')
     except Exception:
-        return None
+        pass
+    if not sha:
+        try:
+            proc = subprocess.run(['git', 'ls-remote', '--heads',
+                                   'https://github.com/Eagle-Xu0213/MessageHub.git', 'main'],
+                                  capture_output=True, text=True, timeout=15,
+                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                                  env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
+            sha = proc.stdout.split()[0] if proc.returncode == 0 and proc.stdout.split() else None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if sha and len(sha) == 40 and all(ch in '0123456789abcdef' for ch in sha):
+        _save_cache({'main_commit': sha})
+        return sha
+    return None
 
 
 def apply_status() -> Dict[str, Any]:
@@ -129,7 +139,7 @@ def fetch_remote(force: bool = False, timeout: float = 5.0) -> Dict[str, Any]:
     """
     if not force:
         cached = _load_cache()
-        if cached:
+        if cached and cached.get('upstream_version'):
             return {k: v for k, v in cached.items() if not k.startswith("_")}
 
     result: Dict[str, Any] = {

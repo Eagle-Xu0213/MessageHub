@@ -199,3 +199,12 @@ def test_worker_updates_clean_repo_and_rejects_local_changes(tmp_path, monkeypat
     with pytest.raises(RuntimeError, match='未提交'):
         worker.apply_update()
     assert (checkout/'item.txt').read_text() == 'local edits'
+
+
+def test_main_commit_falls_back_to_git_when_api_unavailable(monkeypatch):
+    import subprocess
+    def offline(**kwargs):
+        raise OSError('unavailable')
+    monkeypatch.setattr('httpx.Client', offline)
+    monkeypatch.setattr(update.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a, 0, 'a'*40+'\trefs/heads/main\n', ''))
+    assert update._main_commit(force=True) == 'a' * 40

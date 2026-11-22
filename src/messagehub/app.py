@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from contextlib import asynccontextmanager
 
-from messagehub.config import CN_TZ, DB_PATH, STATIC_DIR, TEMPLATES_DIR, WATCH_DIR
+from messagehub.config import BASE_DIR, CN_TZ, DB_PATH, STATIC_DIR, TEMPLATES_DIR, WATCH_DIR
 from messagehub.database import get_db, init_db
 from messagehub.pipeline.watcher import scan_directory, get_latest_capture_status
 from messagehub.pipeline.importer import make_fingerprint, insert_messages
@@ -102,7 +102,7 @@ async def index(request: None = None):
     completed_tasks = cursor.fetchone()[0]
 
     # 今日摘要：今天导入的消息数
-    cursor.execute("SELECT COUNT(*) FROM messages WHERE sent_at >= ?",
+    cursor.execute("SELECT COUNT(*) FROM messages WHERE source_platform = 'wechat' AND sent_at >= ?",
                    (datetime.now(CN_TZ).strftime("%Y-%m-%d"),))
     today_messages = cursor.fetchone()[0]
 
@@ -142,6 +142,29 @@ async def index(request: None = None):
             app_version=update.__version__,
         )
     )
+
+
+@app.get("/api/dashboard/capture")
+async def dashboard_capture():
+    """Report snapshot evidence without exposing collector configuration or messages."""
+    path = BASE_DIR / "runtime" / "moect_live_state.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        stats = state.get("last_stats") or {}
+        completed = state.get("snapshot_completed_at")
+        stamp = datetime.fromisoformat(completed.replace("Z", "+00:00")) if completed else None
+        if stamp and stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=CN_TZ)
+        fresh = bool(stamp and timedelta(0) <= datetime.now(CN_TZ) - stamp < timedelta(minutes=15))
+        if stats.get("failed") or (stats and not stats.get("drained")):
+            status = "error"
+        elif fresh and state.get("processed_generation") and stats.get("drained"):
+            status = "ok"
+        else:
+            status = "unknown"
+        return {"status": status, "last_sync": completed, "tool": "Moect"}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"status": "unknown", "last_sync": None, "tool": "Moect"}
 
 
 @app.get("/api/health")

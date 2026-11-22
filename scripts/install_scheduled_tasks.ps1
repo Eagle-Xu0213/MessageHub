@@ -126,8 +126,8 @@ $headlessAction = New-ScheduledTaskAction `
     -Argument "`"$project\scripts\moect_headless.py`" --once" `
     -WorkingDirectory $project
 $watchdogAction = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$project\scripts\watchdog.ps1`"" `
+    -Execute "$env:SystemRoot\System32\wscript.exe" `
+    -Argument "`"$project\scripts\watchdog_silent.vbs`"" `
     -WorkingDirectory $project
 
 $triggers = @(

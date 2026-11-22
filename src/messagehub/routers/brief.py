@@ -119,7 +119,6 @@ async def brief_page(date: Optional[str] = None):
     return RedirectResponse(url="/", status_code=307)
 
 
-@router.post("/api/brief/reset")
 async def reset_baseline():
     """清零重开：以当前时刻为新基线，清空简报存档，只监测此后新消息。
 

@@ -15,6 +15,7 @@ from messagehub import update
 
 @pytest.fixture(autouse=True)
 def _isolated_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(update, "_local_commit", lambda: None)
     monkeypatch.setattr(update, "_cache_path",
                         lambda: tmp_path / "update_check.json")
     yield
@@ -146,3 +147,55 @@ def test_version_tuple_parsing():
     assert update._version_tuple("0.1.0") == (0, 1, 0)
     assert update._version_tuple("garbage") is None
     assert update._version_tuple("v1") == (1,)
+
+
+def test_git_version_compares_actual_commit(monkeypatch):
+    monkeypatch.setattr(update, '_local_commit', lambda: 'a' * 40)
+    monkeypatch.setattr(update, '_main_commit', lambda force=False: 'a' * 40)
+    assert update.get_update_status()['has_update'] is False
+    monkeypatch.setattr(update, '_main_commit', lambda force=False: 'b' * 40)
+    assert update.get_update_status()['has_update'] is True
+    monkeypatch.setattr(update, '_main_commit', lambda force=False: None)
+    assert update.get_update_status()['has_update'] is False
+
+
+def test_worker_updates_clean_repo_and_rejects_local_changes(tmp_path, monkeypatch):
+    import importlib.util
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location('update_worker', root / 'scripts/update_worker.py')
+    worker = importlib.util.module_from_spec(spec); spec.loader.exec_module(worker)
+    def run(*args, cwd):
+        return subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True, check=True)
+    upstream = tmp_path / 'upstream'; upstream.mkdir()
+    run('init', '-b', 'main', cwd=upstream)
+    run('config','user.email','test@example.invalid',cwd=upstream)
+    run('config','user.name','Test',cwd=upstream)
+    (upstream/'item.txt').write_text('old')
+    run('add','item.txt',cwd=upstream); run('commit','-m','initial',cwd=upstream)
+    checkout = tmp_path/'checkout'
+    run('clone',str(upstream),str(checkout),cwd=tmp_path)
+    (upstream/'item.txt').write_text('new')
+    run('commit','-am','update',cwd=upstream)
+    monkeypatch.setattr(worker,'ROOT',checkout)
+    monkeypatch.setattr(worker,'STATUS',checkout/'runtime'/'update_apply.json')
+    # runtime files are ignored in real installs.
+    (checkout/'.git'/'info'/'exclude').write_text('runtime/\n')
+    real_git = worker.git
+    def official(*args, **kwargs):
+        if args == ('remote','get-url','origin'):
+            return subprocess.CompletedProcess(args, 0, 'https://github.com/Eagle-Xu0213/MessageHub.git\n', '')
+        return real_git(*args, **kwargs)
+    monkeypatch.setattr(worker,'git',official)
+    real_run = worker.subprocess.run
+    def no_pip(args, *a, **k):
+        if '-m' in args and 'pip' in args:
+            return subprocess.CompletedProcess(args, 0)
+        return real_run(args, *a, **k)
+    monkeypatch.setattr(worker.subprocess,'run',no_pip)
+    worker.apply_update()
+    assert (checkout/'item.txt').read_text() == 'new'
+    (checkout/'item.txt').write_text('local edits')
+    with pytest.raises(RuntimeError, match='未提交'):
+        worker.apply_update()
+    assert (checkout/'item.txt').read_text() == 'local edits'

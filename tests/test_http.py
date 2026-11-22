@@ -134,3 +134,24 @@ def test_search(client, sample_file):
     msgs = r.json()["messages"]
     assert len(msgs) >= 1
     assert any("提交" in m["text"] for m in msgs)
+
+
+def test_removed_history_analysis_endpoints(client):
+    assert client.get('/memories').status_code == 404
+    assert client.get('/api/memories').status_code == 404
+    assert client.post('/api/scope/ai-presel', json={'names': []}).status_code == 404
+    assert client.post('/api/brief/reset').status_code == 404
+    assert '去年今日' not in client.get('/').text
+    assert 'AI 自动分级' not in client.get('/select').text
+
+
+def test_update_requires_local_origin(client, monkeypatch):
+    from messagehub import update
+    called = []
+    monkeypatch.setattr(update.sys, 'platform', 'win32')
+    monkeypatch.setattr(update, 'start_update', lambda: called.append(True))
+    assert client.post('/api/update').status_code == 403
+    assert client.post('/api/update', headers={'Origin':'http://evil.example'}).status_code == 403
+    assert client.post('/api/update', headers={'Origin':'http://127.0.0.1:8000','Sec-Fetch-Site':'same-origin'}).status_code == 200
+    assert called == [True]
+    assert '一键更新' in client.get('/').text

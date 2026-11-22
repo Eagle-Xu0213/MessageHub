@@ -60,29 +60,9 @@ class TaskScheduler:
                     # Drain queued message batches before summaries or alerts.
                     if batch['processed'] >= 200:
                         continue
-                    task_pipeline.send_due_alerts(
-                        conn, lambda ev: mail.send_urgent_email({'event': ev}),
-                        desktop_notify.notify_urgent)
+                    task_pipeline.send_due_alerts(conn, None, desktop_notify.notify_urgent)
                     ready = self.snapshot_ready()
                     self.state['capture'] = '补扫完成' if ready else '等待微信新快照'
-                    if ready and not catchup_done and time.monotonic() >= next_catchup:
-                        result = task_pipeline.send_current_digest(conn, mail.send_digest_email, 'catchup')
-                        # Keep retrying a failed email; empty state does not need an email.
-                        catchup_done = bool(result.get('sent') or result.get('skipped'))
-                        if catchup_done:
-                            self.state['mail_status'] = None
-                            next_hour = time.monotonic() + self.hourly_seconds
-                        else:
-                            self.state['mail_status'] = result.get('detail') or '邮件发送失败，稍后重试'
-                            next_catchup = time.monotonic() + 180
-                    if catchup_done and time.monotonic() >= next_hour:
-                        result = task_pipeline.send_current_digest(conn, mail.send_digest_email, 'hourly')
-                        if result.get('sent') or result.get('skipped'):
-                            self.state['mail_status'] = None
-                            next_hour = time.monotonic() + self.hourly_seconds
-                        else:
-                            self.state['mail_status'] = result.get('detail') or '邮件发送失败，稍后重试'
-                            next_hour = time.monotonic() + 180
                     self.state['last_error'] = None
             except Exception as exc:
                 self.state['last_error'] = f'{type(exc).__name__}: {exc}'

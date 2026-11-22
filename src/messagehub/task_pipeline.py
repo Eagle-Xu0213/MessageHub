@@ -16,16 +16,44 @@ from messagehub.config import CN_TZ
 
 _ACTION = re.compile(r"提交|上交|填写|报名|回复|确认|发送|发给|发我|交给|整理|准备|完成|处理|跟进|核对|签字|盖章|参加|出席|写|制作|做|领取|上传|请.{0,8}交")
 _REPLY_REQUEST = re.compile(r"(?:能|是否|可不可以|能不能|有没有|行不行|可以).{0,20}(?:吗|么|\?|？)|请.{0,8}(?:回复|确认)")
-_WORK = re.compile(r"提交|材料|表格|报名|回复|确认|会议|开会|任务|截止|通知|工作|报告|安排|文件|负责|处理|跟进|填写|上传|完成|准备|做|写|请|麻烦|辛苦")
+_WORK = re.compile(r"提交|材料|表格|报名|回复|确认|会议|开会|任务|截止|通知|工作|报告|安排|文件|负责|处理|跟进|填写|上传|完成|工时|考勤|报销|工资|项目|作业|课程|审核|值班|证明|盖章|问卷")
 _DONE = re.compile(r"(?:已经|已|我)(?:经)?(?:完成|提交|交了|发了|发送|上传|填好|写好|做好|处理完)|(?:完成了|交好了|提交了|发过去了|发给你了|上传了|填好了|写好了|做完了|处理好了)")
 _NOT_DONE = re.compile(r"未完成|没完成|尚未|还没|没有完成|未提交|没提交|未上传|没上传|没有提交|不能完成|无法完成")
 _ACK = re.compile(r"^(?:收到|好的|好|明白|了解|可以|没问题|我来|交给我)(?:[，。！!\s]|$)")
-_CATEGORIES = (("会议安排", r"会议|开会|例会|参加|出席|集合"),
+_CATEGORIES = (("会议活动", r"会议|开会|例会|参加|出席|集合"),
                ("报名填写", r"报名|填写|填表|问卷|接龙"),
-               ("沟通回复", r"回复|确认|答复|沟通"),
+               ("沟通确认", r"回复|确认|答复|沟通"),
                ("材料提交", r"材料|表格|报告|提交|上交|上传|文件|文档"))
 _CATEGORY_RES = [(name, re.compile(pattern)) for name, pattern in _CATEGORIES]
 _TOKEN = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}")
+_BARE_MENTION = re.compile(r'^\s*@[^\s@，,。:：！!？?]+[\s，,。:：！!？?]*$')
+
+
+def _context_candidate(mention: dict[str, Any], nearby: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Use an adjacent message from the same sender, without crossing conversation turns."""
+    if not _BARE_MENTION.fullmatch((mention.get('text') or '').strip()):
+        return None
+    at = _time(mention.get('sent_at'))
+    if not at:
+        return None
+    for message in nearby:
+        when = _time(message.get('sent_at'))
+        if not when or abs((when - at).total_seconds()) > 300:
+            continue
+        text = (message.get('text') or '').strip()
+        if not text:
+            continue
+        # Another speaker or another directed mention marks a different turn.
+        if message.get('sender_name') != mention.get('sender_name') or '@' in text:
+            break
+        if _WORK.search(text):
+            category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), '其他')
+            action = bool(_ACTION.search(text) or _REPLY_REQUEST.search(text))
+            return ({'status': 'pending' if action else 'review', 'category': category,
+                     'deadline': deadline_of(text, message.get('sent_at') or ''),
+                     'reason': '结合相邻消息识别，请核对上下文'}, message)
+        break
+    return None
 
 
 def _time(value: str) -> datetime | None:
@@ -115,23 +143,50 @@ def selected_group(message: dict[str, Any]) -> bool:
     return name not in bound_names and name in personal.WORK_GROUPS | personal.WATCH_GROUPS
 
 
+def selected_work_contact(message: dict[str, Any]) -> bool:
+    """Selected work or mixed contacts, excluding groups and excluded contacts."""
+    name = (message.get('conversation_name') or '').strip()
+    gid = str(message.get('conversation_id') or '')
+    if gid.endswith('@chatroom') or gid in (personal.WORK_GROUP_IDS | personal.WATCH_GROUP_IDS | personal.EXCLUDED_GROUP_IDS):
+        return False
+    if name in (personal.WORK_GROUPS | personal.WATCH_GROUPS | personal.EXCLUDED_GROUPS):
+        return False
+    return name in (personal.WORK_CONTACTS | personal.WATCH_CONTACTS) and name not in personal.EXCLUDED_CONTACTS
+
+
 def classify(message: dict[str, Any]) -> dict[str, Any] | None:
     """Return a task candidate only for selected groups and configured identity."""
     group = (message.get("conversation_name") or "").strip()
-    if not selected_group(message):
+    work_contact = selected_work_contact(message)
+    if not selected_group(message) and not work_contact:
         return None
     if not personal.IDENTITY_CONFIGURED or (message.get("sender_name") or "").strip() in personal.MY_SENDER_NAMES:
         return None
     text = (message.get("text") or "").strip()
     if not text:
         return None
+    if work_contact:
+        action = bool(_ACTION.search(text) or _REPLY_REQUEST.search(text))
+        if not _WORK.search(text):
+            return None
+        category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), '其他')
+        return {'status': 'pending' if action else 'review', 'category': category,
+                'deadline': deadline_of(text, message.get('sent_at') or ''),
+                'reason': '工作联系人发来行动事项' if action else '工作联系人消息，行动不明确'}
     names = personal.MY_NICKNAMES | ({personal.MY_REALNAME} if personal.MY_REALNAME else set())
     if personal.MY_SHORTNAME:
         names.add(personal.MY_SHORTNAME)
     direct = any(re.search(r"(?<![\u4e00-\u9fff])(?:@[^\s@，,。:：]{0,20}?)?" + re.escape(n) + r"(?=[\s，,。:：！!？?]|你|请|麻烦|帮|负责|$)", text) for n in names)
     action = bool(_ACTION.search(text) or _REPLY_REQUEST.search(text))
-    if not direct:
+    # A mention alone is not work evidence. Context can promote it below.
+    if direct and not _WORK.search(text):
         return None
+    if not direct:
+        # Public notices require both a subject and an explicit announcement signal.
+        if not (re.search(r"通知|公告|各位|大家|全体|所有人", text) and re.search(r"会议|开会|报名|截止|提交材料|材料提交|填表|问卷", text)):
+            return None
+        category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), "其他")
+        return {"status": "notice", "category": category, "deadline": deadline_of(text, message.get("sent_at") or ""), "reason": "群内公共通知，请核对原文"}
     # Work terms alone do not identify the owner.
     status = "pending" if direct and action else "review" if direct else None
     if not status:
@@ -147,12 +202,15 @@ def init_store(conn: sqlite3.Connection, baseline: bool = True) -> None:
     conn.execute("""CREATE TABLE IF NOT EXISTS task_pipeline_state
         (name TEXT PRIMARY KEY, value TEXT NOT NULL)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS personal_tasks (
-        id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL UNIQUE,
+        id INTEGER PRIMARY KEY, message_id INTEGER UNIQUE,
         conversation_id TEXT NOT NULL, conversation_name TEXT NOT NULL,
         sender_name TEXT NOT NULL, sent_at TEXT NOT NULL, text TEXT NOT NULL,
         category TEXT NOT NULL, deadline TEXT, status TEXT NOT NULL,
-        reason TEXT NOT NULL, completion_message_id INTEGER, updated_at TEXT NOT NULL,
+        reason TEXT NOT NULL, completion_message_id INTEGER, updated_at TEXT NOT NULL, title TEXT,
         FOREIGN KEY(message_id) REFERENCES messages(id))""")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(personal_tasks)")}
+    if "title" not in columns:
+        conn.execute("ALTER TABLE personal_tasks ADD COLUMN title TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_active ON personal_tasks(status, deadline)")
     conn.execute("""CREATE TABLE IF NOT EXISTS personal_task_deliveries (
         task_id INTEGER NOT NULL, deadline TEXT NOT NULL, channel TEXT NOT NULL,
@@ -174,10 +232,30 @@ def initialize_database(db_path: Path) -> None:
     conn = sqlite3.connect(str(path), timeout=30)
     try:
         exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_pipeline_state'").fetchone()
-        if not exists:
+        task_info = conn.execute("PRAGMA table_info(personal_tasks)").fetchall() if exists else []
+        needs_migration = bool(task_info and (not any(r[1] == "title" for r in task_info) or any(r[1] == "message_id" and r[3] for r in task_info)))
+        if not exists or needs_migration:
             backup = path.with_name(path.name + ".before-personal-tasks-" + datetime.now(CN_TZ).strftime("%Y%m%d-%H%M%S-%f") + ".bak")
             with sqlite3.connect(str(backup)) as target:
                 conn.backup(target)
+        if needs_migration:
+            # Copy into a replacement table without renaming the original, preserving
+            # delivery-table foreign keys and all existing task IDs.
+            conn.execute("""CREATE TABLE personal_tasks_new (
+                id INTEGER PRIMARY KEY, message_id INTEGER UNIQUE,
+                conversation_id TEXT NOT NULL, conversation_name TEXT NOT NULL,
+                sender_name TEXT NOT NULL, sent_at TEXT NOT NULL, text TEXT NOT NULL,
+                category TEXT NOT NULL, deadline TEXT, status TEXT NOT NULL,
+                reason TEXT NOT NULL, completion_message_id INTEGER, updated_at TEXT NOT NULL,
+                title TEXT, FOREIGN KEY(message_id) REFERENCES messages(id))""")
+            names = [r[1] for r in task_info if r[1] != 'title']
+            columns = ','.join(names)
+            title_expr = 'title' if any(r[1] == 'title' for r in task_info) else 'NULL'
+            conn.execute(f"INSERT INTO personal_tasks_new ({columns},title) SELECT {columns},{title_expr} FROM personal_tasks")
+            conn.execute("DROP TABLE personal_tasks")
+            conn.execute("ALTER TABLE personal_tasks_new RENAME TO personal_tasks")
+            conn.execute("UPDATE personal_tasks SET category='会议活动' WHERE category='会议安排'")
+            conn.execute("UPDATE personal_tasks SET category='沟通确认' WHERE category='沟通回复'")
         init_store(conn)
     finally:
         conn.close()
@@ -213,7 +291,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
             if base_time and timestamp and timestamp < base_time:
                 continue
             group = (msg["conversation_name"] or "").strip()
-            if not selected_group(msg):
+            if not selected_group(msg) and not selected_work_contact(msg):
                 continue
             sender = (msg["sender_name"] or "").strip()
             if sender in personal.MY_SENDER_NAMES:
@@ -234,11 +312,62 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                         if timestamp and task_time and timedelta(0) <= timestamp - task_time <= timedelta(minutes=10):
                             conn.execute("UPDATE personal_tasks SET status='accepted', updated_at=? WHERE id=?", (datetime.now(CN_TZ).isoformat(), candidates[0]["id"]))
                 continue
+            # A bare mention may follow its instruction in a separate WeChat message.
             candidate = classify(msg)
+            contextual_title = None
+            bare_mention = bool(_BARE_MENTION.fullmatch((msg['text'] or '').strip()))
+            names = personal.MY_NICKNAMES | ({personal.MY_REALNAME} if personal.MY_REALNAME else set()) | ({personal.MY_SHORTNAME} if personal.MY_SHORTNAME else set())
+            mine = bare_mention and any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', msg['text'].strip()) for name in names)
+            if mine:
+                previous = conn.execute(
+                    'SELECT id,conversation_id,sender_name,sent_at,text FROM messages '
+                    'WHERE conversation_id=? AND id<? ORDER BY id DESC LIMIT 1',
+                    (msg['conversation_id'], msg['id'])).fetchall()
+                nearby = [dict(row) for row in previous if not base_time or (_time(row['sent_at']) and _time(row['sent_at']) >= base_time)]
+                matched = _context_candidate(msg, nearby)
+                if matched:
+                    candidate, source = matched
+                    contextual_title = source['text'].strip()[:200]
+            # A work-related follow-up may arrive after an otherwise bare @.
+            previous_message = conn.execute('''SELECT id,conversation_id,conversation_name,sender_name,sent_at,text
+                FROM messages WHERE conversation_id=? AND id<? ORDER BY id DESC LIMIT 1''',
+                (msg['conversation_id'], msg['id'])).fetchone()
+            if previous_message and personal.IDENTITY_CONFIGURED:
+                mention = dict(previous_message)
+                mention_time = _time(mention['sent_at'])
+                is_mine = any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', mention['text'].strip()) for name in names)
+                if is_mine and (not base_time or (mention_time and mention_time >= base_time)):
+                    matched = _context_candidate(mention, [msg])
+                    if matched:
+                        info, source = matched
+                        cur = conn.execute('''INSERT OR IGNORE INTO personal_tasks
+                            (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at,title)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+                            (mention['id'], mention['conversation_id'], mention['conversation_name'], mention['sender_name'],
+                             mention['sent_at'], mention['text'], info['category'], info['deadline'], info['status'],
+                             info['reason'], datetime.now(CN_TZ).isoformat(), source['text'].strip()[:200]))
+                        result['created'] += cur.rowcount
+            # Also handle the instruction arriving in a later capture batch.
+            previous_task = conn.execute('''SELECT t.id,t.message_id,t.text,t.sender_name,t.sent_at
+                FROM personal_tasks t JOIN messages m ON m.id=t.message_id
+                WHERE t.conversation_id=? AND t.message_id<?
+                AND t.status='review' AND t.title IS NULL AND t.reason='提及本人，行动不明确'
+                AND NOT EXISTS (SELECT 1 FROM messages n WHERE n.conversation_id=m.conversation_id
+                                AND n.id>m.id AND n.id<?)
+                ORDER BY t.message_id DESC LIMIT 1''',
+                (msg['conversation_id'], msg['id'], msg['id'])).fetchone()
+            if previous_task:
+                matched = _context_candidate(dict(previous_task), [msg])
+                if matched:
+                    info, source = matched
+                    conn.execute('''UPDATE personal_tasks SET status=?,category=?,deadline=?,reason=?,title=?,updated_at=?
+                        WHERE id=? AND status='review' AND title IS NULL''',
+                        (info['status'], info['category'], info['deadline'], info['reason'],
+                         source['text'].strip()[:200], datetime.now(CN_TZ).isoformat(), previous_task['id']))
             if candidate:
                 cur = conn.execute("""INSERT OR IGNORE INTO personal_tasks
-                    (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (msg["id"], msg["conversation_id"], group, sender, msg["sent_at"], msg["text"], candidate["category"], candidate["deadline"], candidate["status"], candidate["reason"], datetime.now(CN_TZ).isoformat()))
+                    (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at,title)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (msg["id"], msg["conversation_id"], group, sender, msg["sent_at"], msg["text"], candidate["category"], candidate["deadline"], candidate["status"], candidate["reason"], datetime.now(CN_TZ).isoformat(), contextual_title))
                 result["created"] += cur.rowcount
         if rows:
             conn.execute("UPDATE task_pipeline_state SET value=? WHERE name='cursor'", (str(rows[-1]["id"]),))
@@ -290,7 +419,7 @@ def send_due_alerts(conn: sqlite3.Connection, send_mail, send_desktop,
             continue
         result['urgent'] += 1
         event = dict(task, urgent_reason='24小时内截止')
-        if pending(task, 'mail'):
+        if send_mail is not None and pending(task, 'mail'):
             success, error = deliver(send_mail, event)
             record(task, 'mail', success, error)
             result['mail'] += int(success)

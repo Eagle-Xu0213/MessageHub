@@ -13,6 +13,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,14 +26,71 @@ from messagehub import __version__
 REPO = "Eagle-Xu0213/MessageHub"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 COMMITS_URL = f"https://api.github.com/repos/{REPO}/commits?per_page=1"
+MAIN_URL = f"https://api.github.com/repos/{REPO}/commits/main"
 
 # 检查结果缓存：跟随 DB 目录（测试自动隔离），1 小时过期
 _CACHE_TTL = 3600
+_START_LOCK = threading.Lock()
 
 
 def _cache_path() -> Path:
     from messagehub.config import DB_PATH
     return DB_PATH.parent / "update_check.json"
+
+
+def _local_commit() -> Optional[str]:
+    from messagehub.config import BASE_DIR
+    try:
+        result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=BASE_DIR,
+                                capture_output=True, text=True, timeout=5,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return result.stdout.strip() if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _main_commit(force: bool = False) -> Optional[str]:
+    cached = _load_cache() if not force else None
+    if cached and cached.get('main_commit'):
+        return cached['main_commit']
+    try:
+        import httpx
+        with httpx.Client(timeout=5, headers={'User-Agent': 'MessageHub-update-check',
+                                             'Accept': 'application/vnd.github+json'}) as client:
+            response = client.get(MAIN_URL)
+            if response.status_code != 200:
+                return None
+            sha = response.json().get('sha', '')
+            if len(sha) != 40 or any(ch not in '0123456789abcdef' for ch in sha):
+                return None
+            _save_cache({'main_commit': sha})
+            return sha
+    except Exception:
+        return None
+
+
+def apply_status() -> Dict[str, Any]:
+    from messagehub.config import DB_PATH
+    try:
+        return json.loads((DB_PATH.parent / 'update_apply.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {'state': 'idle'}
+
+
+def start_update() -> None:
+    from messagehub.config import BASE_DIR, DB_PATH
+    with _START_LOCK:
+        if apply_status().get('state') in ('starting', 'updating', 'restarting'):
+            raise RuntimeError('更新正在进行，请稍候')
+        status_file = DB_PATH.parent / 'update_apply.json'
+        status_file.write_text(json.dumps({'state': 'starting', 'message': '正在启动更新'}), encoding='utf-8')
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'DETACHED_PROCESS', 0)
+        try:
+            subprocess.Popen([sys.executable, str(BASE_DIR / 'scripts' / 'update_worker.py'), str(os.getpid())],
+                             cwd=BASE_DIR, creationflags=flags, close_fds=True)
+        except OSError:
+            status_file.write_text(json.dumps({'state': 'error', 'message': '无法启动更新程序'}), encoding='utf-8')
+            raise RuntimeError('无法启动更新程序')
 
 
 def _load_cache() -> Optional[Dict[str, Any]]:
@@ -114,6 +175,14 @@ def fetch_remote(force: bool = False, timeout: float = 5.0) -> Dict[str, Any]:
 
 def get_update_status(force: bool = False) -> Dict[str, Any]:
     """本地 vs 上游比对，给前端/首页用的最终形态。"""
+    local_commit = _local_commit()
+    if local_commit:
+        remote_commit = _main_commit(force=force)
+        return {'local_version': __version__, 'local_commit': local_commit[:7],
+                'upstream_version': remote_commit[:7] if remote_commit else None,
+                'upstream_type': 'commit', 'has_update': bool(remote_commit and local_commit != remote_commit),
+                'can_update': sys.platform == 'win32', 'checked': bool(remote_commit),
+                'release_url': f'https://github.com/{REPO}/commits/main'}
     remote = fetch_remote(force=force)
     remote_ver = remote.get("upstream_version")
     has_update = False
@@ -129,4 +198,5 @@ def get_update_status(force: bool = False) -> Dict[str, Any]:
         "upstream_type": remote.get("upstream_type"),
         "release_url": remote.get("release_url"),
         "has_update": has_update,
+        "can_update": False,
     }

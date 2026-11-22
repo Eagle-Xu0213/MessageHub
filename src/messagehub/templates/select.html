@@ -117,7 +117,6 @@
     <a href="/">🏠 工作台</a>
     <a href="/brief">📋 每日简报</a>
     <a href="/live">⚡ 实时消息接入</a>
-    <a href="/memories">🕰 去年今日</a>
     <a href="/select" class="cur">🔍 检测范围</a>
   </div>
 
@@ -131,11 +130,11 @@
   <div class="card">
     <h2>分级说明</h2>
     <div class="legend">
-      <span><i class="lv-work"></i><b>工作</b>：发来的内容都按工作处理（私聊非噪声即报；群聊含通知）</span>
-      <span><i class="lv-watch"></i><b>混合</b>：工作生活都有（需带任务语义才报，防闲聊误报）</span>
+      <span><i class="lv-work"></i><b>工作</b>：从新增消息中筛选工作事项和通知</span>
+      <span><i class="lv-watch"></i><b>混合</b>：同样筛选新增工作信息，过滤闲聊</span>
       <span><i class="lv-excluded"></i><b>不检测</b>：纯生活，完全不处理</span>
     </div>
-    <div class="hint">AI 自动分级只是<b>预勾选</b>，结果仅供参考——保存前请复核，特别是工作/混合边界上的会话。AI 只接收消息统计特征与脱敏片段，不发送完整聊天记录。</div>
+    <div class="hint">请手动选择会话层级。工作和混合会话都只分析新增消息中的工作信息；不检测的会话不会进入事项识别。</div>
   </div>
 
   <div class="card">
@@ -148,8 +147,6 @@
         <option value="contact">仅联系人</option>
       </select>
       <div class="spacer"></div>
-      <button id="aiBtn">✦ AI 自动分级</button>
-      <span class="hint" id="llmInfo"></span>
     </div>
     <div class="levelbar" id="filterChips">
       <span class="chip" data-lv="work">工作 <b id="cw">0</b></span>
@@ -382,59 +379,6 @@ $("#saveBtn").addEventListener("click", async () => {
     btn.disabled = false; btn.textContent = "保存并生效";
   }
 });
-
-// ---------------- AI 自动分级 ----------------
-$("#aiBtn").addEventListener("click", async () => {
-  if (aiBusy) return;
-  aiBusy = true;
-  const btn = $("#aiBtn");
-  btn.disabled = true;
-  btn.innerHTML = `<span class="spin"></span>分析中…`;
-  try {
-    const names = ALL.map(c => ({ name: c.name, kind: c.kind }));
-    const r = await fetch("/api/scope/ai-presel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ names }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "AI 分析失败");
-    let applied = 0;
-    for (const c of ALL) {
-      const lv = d.levels[c.name];
-      if (lv && lv.level) {
-        c.level = lv.level;
-        c.reason = lv.reason || "";
-        c.source = lv.source || "";
-        applied++;
-      }
-    }
-    markDirty();
-    render(); refreshCounters();
-    toast(`AI 分级完成：${applied} 项预勾选（来源：${d.source === "llm" ? "AI 模型" : "本地规则推测"}）。请复核后保存。`);
-  } catch (e) {
-    toast(e.message, true);
-  } finally {
-    aiBusy = false;
-    btn.disabled = false; btn.textContent = "✦ AI 自动分级";
-  }
-});
-
-// LLM 状态提示
-(async () => {
-  try {
-    const r = await fetch("/api/scope/llm-status");
-    const d = await r.json();
-    const el = $("#llmInfo");
-    if (!d.configured) {
-      el.textContent = "未配置 LLM，AI 分级将使用本地规则推测";
-    } else if (d.uses_public_service) {
-      el.textContent = "⚠ LLM 指向公共服务，将只用本地规则推测（隐私保护）";
-    } else {
-      el.textContent = `AI 就绪：${d.model || "已配置"}`;
-    }
-  } catch (_) { /* 忽略 */ }
-})();
 
 load();
 </script>

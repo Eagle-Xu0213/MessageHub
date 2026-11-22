@@ -429,7 +429,6 @@ def _build_presel_prompt(digests: Dict[str, Dict[str, Any]]) -> str:
     )
 
 
-@router.post("/api/scope/ai-presel")
 async def ai_presel(payload: PreselRequest):
     """AI 自动分级（预勾选）。
 

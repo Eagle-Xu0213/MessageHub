@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -19,7 +19,7 @@ from messagehub.database import get_db, init_db
 from messagehub.pipeline.watcher import scan_directory, get_latest_capture_status
 from messagehub.pipeline.importer import make_fingerprint, insert_messages
 from messagehub.pipeline.live import get_collector
-from messagehub.routers import brief, live, memories, tasks, scope
+from messagehub.routers import brief, live, tasks, scope
 from messagehub import schedule
 from messagehub import mail as brief_mail
 from messagehub import update
@@ -72,7 +72,6 @@ if STATIC_DIR.exists():
 
 # 路由组装
 app.include_router(tasks.router)
-app.include_router(memories.router)
 app.include_router(live.router)
 app.include_router(brief.router)
 app.include_router(scope.router)
@@ -158,7 +157,30 @@ async def version_check(refresh: bool = False):
 
     refresh=1 强制绕过缓存重查 GitHub；默认 1 小时缓存。
     """
-    return update.get_update_status(force=refresh)
+    import anyio
+    return await anyio.to_thread.run_sync(lambda: update.get_update_status(force=refresh))
+
+
+@app.get('/api/update/status')
+async def update_status():
+    return update.apply_status()
+
+
+@app.post('/api/update')
+async def apply_update(request: Request):
+    from urllib.parse import urlsplit
+    origin = urlsplit(request.headers.get('origin', ''))
+    if origin.scheme != 'http' or origin.hostname not in ('127.0.0.1', 'localhost') or origin.port != 8000:
+        raise HTTPException(status_code=403, detail='只能从本机工作台启动更新')
+    if request.headers.get('sec-fetch-site') not in (None, 'same-origin'):
+        raise HTTPException(status_code=403, detail='只能从本机工作台启动更新')
+    if update.sys.platform != 'win32':
+        raise HTTPException(status_code=400, detail='一键更新目前仅支持 Windows')
+    try:
+        update.start_update()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {'state': 'starting'}
 
 
 @app.post("/api/import")

@@ -142,63 +142,10 @@ if ($newCfg) {
 }
 Write-Host ""
 
-# ---------- 步骤 5：Moect 可选安装（微信实时采集） ----------
-# 已装则跳过；未装询问。默认回车 = 不装（保守，纯手动导入模式照常可用）。
-function Test-MoectInstalled {
-    # 与 scripts/moect_live.py 的探测顺序保持一致（含 .env 的 MOECT_EXE）
-    $envFile = Join-Path $ROOT ".env"
-    if (Test-Path $envFile) {
-        $line = (Get-Content $envFile -Encoding UTF8 |
-            Where-Object { $_ -match '^\s*MOECT_EXE\s*=' } |
-            Select-Object -First 1)
-        if ($line) {
-            $p = ($line -split '=', 2)[1].Trim().Trim('"')
-            if ($p -and (Test-Path $p)) { return $p }
-        }
-    }
-    $candidates = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\Moect\Moect.exe"),
-        (Join-Path $env:ProgramFiles "Moect\Moect.exe"),
-        (Join-Path ${env:ProgramFiles(x86)} "Moect\Moect.exe")
-    )
-    foreach ($c in $candidates) {
-        if ($c -and (Test-Path $c)) { return $c }
-    }
-    return $null
-}
-
-$moectPath = Test-MoectInstalled
-if ($moectPath) {
-    Write-Host "[5/6] 检测到已安装 Moect：$moectPath"
-    Write-Host "      微信实时采集就绪（详见 README「Moect 集成」章节）。"
-} else {
-    Write-Host "[5/6] 可选：安装 Moect（微信数据库解密工具，用于实时采集）"
-    Write-Host "      不装也能用：手动导入聊天记录文件（JSONL/CSV）功能完全一样。"
-    $answer = Read-Host "      要用微信实时采集，现在自动安装 Moect 吗？[y/N]"
-    if ($answer -match '^[Yy]') {
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Write-Host "      正在通过 winget 安装 Moect ..."
-            & winget install --id Moect --accept-source-agreements --accept-package-agreements
-            if ($LASTEXITCODE -eq 0) {
-                $moectPath = Test-MoectInstalled
-                if ($moectPath) {
-                    Write-Host "      ✓ Moect 安装成功：$moectPath"
-                } else {
-                    Write-Host "      ✓ Moect 已安装（安装位置不在常见探测路径，稍后自检时确认）" -ForegroundColor Yellow
-                }
-            } else {
-                Write-Host "      ✗ winget 安装失败（退出码 $LASTEXITCODE）。" -ForegroundColor Yellow
-                Write-Host "        可稍后手动安装：winget install Moect" -ForegroundColor Yellow
-                Write-Host "        或从 GitHub Releases 下载：https://github.com/ILoveScratch2/Moect/releases" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "      ✗ 本机没有 winget（Win10 早期版本可能没有）。" -ForegroundColor Yellow
-            Write-Host "        手动安装方式见 README「Moect 集成」章节。" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "      已跳过。之后想用实时采集，随时可执行：winget install Moect"
-    }
-}
+# ---------- 步骤 5：微信自动采集由独立脚本配置 ----------
+Write-Host "[5/6] 微信自动采集使用独立的 Moect 源码，无需安装图形程序。"
+Write-Host "      安装完成后请按 README 运行 scripts\install_scheduled_tasks.ps1。"
+Write-Host "      如只使用手动导入，可以跳过。"
 Write-Host ""
 
 # ---------- 步骤 6：自检 ----------
@@ -221,20 +168,9 @@ Write-Host ""
 Write-Host "  1. 双击「启动 MessageHub.bat」，浏览器会自动打开"
 Write-Host "     http://127.0.0.1:8000/"
 Write-Host ""
-if ($moectPath) {
-    Write-Host "  2. 微信实时采集（Moect 已装好）："
-    Write-Host "     a. 登录微信桌面版，手动运行一次 Moect，确认它能"
-    Write-Host "        解密并生成快照（这一步不通过，后面都白搭）"
-    Write-Host "     b. 环境自检："
-    Write-Host "        .venv\Scripts\python scripts\moect_live.py --check"
-    Write-Host "     c. 详细步骤看 README「Moect 集成」章节。"
-} else {
-    Write-Host "  2. 数据来源（二选一）："
-    Write-Host "     a. 手动导入聊天记录文件（JSONL/CSV/TXT）——"
-    Write-Host "        把文件丢进 imports\ 目录，网页里点「扫描导入」"
-    Write-Host "     b. 微信实时采集：之后执行 winget install Moect，"
-    Write-Host "        再看 README「Moect 集成」章节"
-}
+Write-Host "  2. 微信自动采集：登录微信后，执行："
+Write-Host '     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"'
+Write-Host "     手动导入可跳过此步。详见 README。"
 Write-Host ""
 Write-Host "  3. 遇到问题请看 README 的「排错 FAQ」章节。"
 Write-Host "============================================"

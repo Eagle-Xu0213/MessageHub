@@ -1,320 +1,74 @@
-# AGENTS.md — MessageHub AI 安装手册
+# AGENTS.md — MessageHub 安装与维护指南
 
-> **这份文件是写给 AI 助手的，不是写给人的。**
-> 你（AI 助手）正在帮一位用户把 MessageHub 装到 TA 的 Windows 电脑上。
-> 本文件是你的完整执行手册：按章节顺序执行、每步验收、失败按 §9 排错表处理。
-> 人读的文档是 [README.md](README.md)；两者冲突时**以本文件为准**（本文件针对 AI 执行做了防呆）。
+本文件面向协助用户在本机安装 MessageHub 的 Agent。人类用户的简明说明见 [README.md](README.md)。用户的明确要求优先；已有项目、配置和数据必须保留。
 
----
+## 0. 收到仓库链接后
 
-## 0. 你的工作方式
+用户只提供 GitHub 链接并希望安装时，也应主动完成安装，而不是只解释步骤。先读取仓库最新的 `AGENTS.md` 和 README；如果仓库尚未下载，可读取 GitHub 上的文件或在用户指定位置克隆后读取。不要把克隆目录当作必然为空：先确认路径、仓库地址和 Git 状态；复用现有合适安装，绝不覆盖、重置或删除用户的改动、配置和数据。
 
-先判断你属于哪种，再开始：
+本地 Agent 直接执行非交互步骤并检查结果；纯对话 Agent 每次给用户一条可执行指令，等待结果后继续。使用 Windows PowerShell，按实际环境选择命令；不要在自动化中运行会等待记事本或输入的 `setup.bat`。
 
-| 模式 | 特征 | 做法 |
-|---|---|---|
-| **本地 Agent** | 你能在用户电脑上直接执行命令（Claude Code、Cursor、WorkBuddy 桌面版等） | 直接按本手册执行，每步验收后继续 |
-| **远程对话 AI** | 你只能输出文字（网页版 ChatGPT / Claude 等） | 把命令**逐条**发给用户复制粘贴，让用户把输出贴回来，你核对后再给下一条。一次只发一条 |
+先向用户简短说明：微信采集会读取已登录微信并在本机保存明文快照；后续使用外部 AI 时相关内容可能发给所选服务，现有部分 AI 代码失败时还可能使用 Pollinations、LLM7 等备用服务。不要声称数据永不离开本机。网络安装会下载依赖和 Moect 源码，自动采集会注册当前用户计划任务。
 
-通用纪律：
+## 1. 一次收集必要信息
 
-- **不要跳步**。每一步末尾的 ✅ 验收通过才进下一步。
-- **不要替用户编造配置值**。§1 的必答题没拿到答案就停下来问。
-- **隐私说明**：昵称、真名和群名配置保存在本机 `config/personal.json`。启用 AI 或邮件后，相关消息、会话名、发送者等可能随功能请求发送给外部服务；必须事先向用户说明。
-- **命令行优先用 PowerShell**（Windows）；bat 文件里有中文，个别终端乱码。
-- 服务和数据库在本机运行。安装会下载依赖及 Moect 源码；首页版本检查会访问 GitHub。启用 AI 或邮件后会向相应服务发送内容，部分 AI 请求失败时还会尝试 Pollinations、LLM7 等内置第三方备用服务。
+能从环境安全确认的内容（Windows 版本、已有 Python/Git、项目位置、已有配置）自行确认，不重复问。向用户一次性了解：
 
----
+1. 微信昵称、本人在群里发言时显示的名字；如需匹配真实姓名或简称，再提供相应名字。至少需要昵称或真实姓名才能识别个人事项；不编造姓名或昵称。
+2. 哪些群和联系人属于“工作”或“混合关注”。用户也可稍后在网页的“检测范围”手动选择；不知道时允许先启动，明确提示需选择后才会采集对应会话。未指定的私聊默认不采集。
+3. 是否使用 Windows 微信自动采集；Windows 默认安装，用户明确只要手动导入时跳过计划任务。微信必须由用户自行登录并保持运行。
+4. 准备兼容 OpenAI Chat Completions 的 API 地址、模型名称和密钥。不要索要邮箱或 SMTP 信息。为避免泄露，优先让用户自行在本机 `.env` 中填写密钥；不要在命令行参数、终端输出、日志、截图或最终回复中显示密钥。
 
-## 1. 安装前必问（一次性问完）
+**实际功能边界**：当前工作台任务筛选、相邻消息摘要和通知均使用本地规则，并不调用上述 API。API 尚未配置或用户暂不提供时，可继续安装本地功能并如实说明；不能把“已填写配置”说成“AI 识别已启用”，也不能把未发送的测试请求说成验证通过。用户要求验证 API 连通性时，先说明请求的目标、费用及可能的第三方备用服务；仅使用不含聊天内容的最小测试，避免输出密钥或响应中的敏感数据。
 
-**合并成一次提问**，不要挤牙膏。用大白话问，不要甩字段名：
+## 2. 安装环境和代码
 
-### 必答（缺了装不出完整功能）
+适用于 Windows 10 / 11。检查 `python --version`、`git --version`；Python 至少 3.11。`python` 不可用时尝试 `py -3 --version`，确认版本后可用 `py -3 -m venv .venv`。缺少依赖时优先使用用户已有安装方式；必须安装时，说明下载并按授权安装 Python 和 Git。安装后在新终端确认可用。
 
-1. 电脑是 **Windows 10 / 11** 吗？
-   - 是 → 完整安装（含微信实时采集）
-   - 否（macOS / Linux）→ **只能手动导入模式**：跳过 §6 和 §7，其余步骤相同；告诉用户把聊天导出文件（JSONL/CSV/TXT）放进 `imports/` 目录，网页点扫描导入
-2. 你的**微信昵称**是什么？（群里 `@你` 靠它匹配；可多个，逗号分隔；不确定就让用户打开微信 →「我」看昵称）
-3. 你的**真实姓名**？（匹配「@班级+张三」这类群昵称）
-4. 你自己在群里**发言时显示的名字**？（判断「这事你回过没有」用，通常同昵称）
-5. 你的**工作群名**有哪些？（**和微信里一字不差**，逗号分隔；只有这些群会被提取任务）
-
-### 可选（用户没提就跳过，不要追问）
-
-6. **邮件通知**：要的话请用户提供 SMTP 服务器、端口、发件邮箱、**授权码**（不是登录密码）、收件邮箱 → 填 `.env` 的 `SMTP_*` / `BRIEF_TO`
-7. **AI 摘要/加急截止解析**：有 OpenAI 兼容接口的填 `.env` 的 `LLM_*`；没有就留空，使用本地规则；摘要和截止时间识别能力会有所不同
-
-> 微信实时采集是本项目核心功能，**默认要装**（§6）。除非用户明确说「不要」「只用导入文件」，才跳过 §6。
-
----
-
-## 2. 环境预检
+用户未指定位置时，可在桌面克隆；若目录已存在，先检查而不是覆盖：
 
 ```powershell
-python --version
+git clone https://github.com/Eagle-Xu0213/MessageHub.git "$env:USERPROFILE\Desktop\MessageHub"
 ```
 
-- `Python 3.11` 及以上 → 通过（Moect 源码用到 `tomllib`，3.11 是硬下限）
-- `python` 不是内部命令 / 弹 Microsoft Store → 试 `py -3 --version`；有 3.11+ 则**后续所有 `python` 换成 `py -3`**
-- 都没有 → `winget install Python.Python.3.12`，装完**必须新开终端窗口**再验证
-- winget 也没有 → 让用户从 <https://www.python.org/downloads/> 下载安装，**务必勾选 "Add python.exe to PATH"**
+在项目根目录创建虚拟环境并安装依赖；已有 `.venv` 先复用，不删除重建：
 
 ```powershell
-git --version
-```
-
-- 没有且你是本地 Agent → `winget install Git.Git`，新开窗口验证
-- 远程 AI 且用户不想装 Git → 备选：下载 <https://github.com/Eagle-Xu0213/MessageHub/archive/refs/heads/main.zip> 解压（效果等同 clone）
-- §6 安装脚本也要用 git clone 一份 GPL 源码，所以**最好还是装 Git**
-
-⚠️ **常见坑**：装完 Python/Git 后在旧窗口里验证会失败。所有"装完就验证"都必须**新开终端窗口**。
-
----
-
-## 3. 获取代码
-
-```bat
-cd /d %USERPROFILE%\Desktop
-git clone https://github.com/Eagle-Xu0213/MessageHub.git
-cd MessageHub
-```
-
-装到桌面便于用户找到；用户指定其他目录就听用户的。后面所有命令都在**项目根目录**执行。
-
-✅ 验收：目录里有 `setup.bat`、`README.md`、`src\`。
-
----
-
-## 4. 安装依赖与配置（非交互路径）
-
-> ⚠️ **不要直接运行 `setup.bat`**。它是给"人双击"设计的：会弹记事本等人编辑、用 `Read-Host` 等人回答装不装 Moect，AI 执行会卡死。走下面的等效非交互路径。
-
-### 4.1 创建虚拟环境并装依赖
-
-```bat
 python -m venv .venv
-.venv\Scripts\python -m pip install --upgrade pip
-.venv\Scripts\python -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-pip 失败（网络超时 / 代理）→ 用清华镜像重试：
+上述 venv 创建仅对尚不存在的环境执行。安装失败时根据实际错误检查网络、代理和 Python；不要擅自删除已有环境。macOS / Linux 仅提供手动导入，按该系统的 venv 路径安装；跳过 Windows 微信采集、计划任务和自启。
 
-```bat
-.venv\Scripts\python -m pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
+## 3. 配置身份、会话和 API
 
-✅ 验收：
+- `.env` 不存在才复制 `.env.example`；`config/personal.json` 不存在才生成。已有文件一律先保留，不用模板覆盖。
+- 新建个人配置时根据用户提供的信息填写 `identity.nicknames`、`identity.real_name`、`identity.sender_names`；`short_name` 未提供则留空。工作和混合会话分别写入 `groups.work` / `groups.watch`，联系人写入 `contacts.work` / `contacts.watch`；未知列表留空。不要沿用示例群、示例联系人、示例别名或占位身份。将 `group_ids` 的 work/watch/excluded 初始化为空对象，网页保存后可绑定 ID。以标准 JSON 库写入 UTF-8，正确转义，不把用户输入拼入可执行命令。
+- `.env` 中配置 `LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY`。密钥由用户在本机编辑或通过明确授权的安全方式提供；不猜测地址、模型或密钥。新模板的密钥为空；对于旧模板，若用户未配置真实服务，应清除示例 `LLM_API_KEY`，并清空旧示例 `SMTP_USER`、`SMTP_PASS`、`BRIEF_TO`，不得覆盖已有真实值。无需配置或验证 SMTP。
+- 先完成身份和会话配置，再首次启动服务：初始化会建立任务处理基线。验证 JSON 可以解析、身份和已确认的会话配置正确；只输出是否配置，不打印个人信息或密钥。
 
-```bat
-.venv\Scripts\python -c "import messagehub.app; print('core ok')"
-```
+当前规则会从已选工作和混合会话的新增消息中筛选工作信号；混合会话不会因被归为混合而完全忽略。单独的 @ 需要邻近工作上下文才可能生成事项；规则可能遗漏。采集原始消息、规则筛选和创建事项是不同阶段，不要宣称所有采集内容都被大模型分析。
 
-输出 `core ok` 无报错。
+## 4. 微信自动采集和启动
 
-### 4.2 生成 .env
-
-```bat
-copy .env.example .env
-```
-
-模板包含非空示例值，复制后须检查：未使用 AI 时清空 `LLM_API_KEY`；未使用邮件时清空 `SMTP_USER`、`SMTP_PASS`、`BRIEF_TO`。用户选择配置时再填写真实值；启用 AI 前说明部分请求可能发送到内置第三方备用服务。不配 AI 走本地规则，不配 SMTP 则不发邮件。
-
-### 4.3 写入个人配置（关键，漏了 = 简报永远空白）
-
-**先复制模板**（非交互路径不会自动创建，这步漏了后面全空）：
-
-```bat
-copy config\personal.example.json config\personal.json
-```
-
-再把 §1 必答题 2–5 的答案写进 `config/personal.json`：
-
-```json
-{
-  "identity": {
-    "nicknames": ["必答2：微信昵称"],
-    "real_name": "必答3：真名",
-    "short_name": "",
-    "sender_names": ["必答4：自己发言的显示名"]
-  },
-  "groups": {
-    "work": ["必答5：工作群名，精确匹配微信显示名"],
-    "watch": [],
-    "excluded": []
-  },
-  "contacts": { "work": [], "watch": [], "excluded": [] }
-}
-```
-
-说明：
-
-- `contacts` 是**私聊**白名单：没列出的联系人私聊完全不采集（保守默认）
-- `short_name` 是别人直呼你的简称（如姓名去掉姓），想启用直呼匹配才填
-- 群名必须和微信里显示**一字不差**，没有模糊匹配
-
-✅ 验收：
-
-```bat
-.venv\Scripts\python -c "import json; d=json.load(open('config/personal.json', encoding='utf-8')); print('identity:', bool(d['identity']['nicknames']), '| groups.work:', d['groups']['work'])"
-```
-
-昵称非空、工作群列表非空。
-
----
-
-## 5. 启动与验收
-
-### 5.1 启动服务
-
-**本地 Agent 且有受管后台任务能力**（WorkBuddy / Claude Code 等）：
-
-```bat
-.venv\Scripts\python -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000 --log-level warning
-```
-
-作为**受管后台任务**运行（不要 `&` 挂后台，会随会话退出而死）。
-
-**没有后台任务能力 / 给用户长期用**：
-
-```bat
-start "" "启动 MessageHub.bat"
-```
-
-或让用户双击项目根目录的 `启动 MessageHub.bat`。这个 bat 幂等：服务已在跑时不会重复启动。
-
-> ⚠️ **带沙箱的 AI 终端特别注意**（WorkBuddy / CodeBuddy 桌面版等）：这类环境启动的后台进程**会随 AI 会话结束被清理**，而且 venv 里 `psutil` 可能看不到微信进程（进程枚举被注入污染）。**不要试图在这种终端里长期托管服务或 headless 桥**——按 §6 装好计划任务，由 Windows 计划任务在干净环境里拉起，才是可靠路径。这也正是本项目用两个计划任务的原因。
-
-### 5.2 验收
-
-```powershell
-curl -s -m 5 http://127.0.0.1:8000/api/health
-```
-
-✅ 输出 `{"status":"ok","version":...}`。让用户浏览器打开 <http://127.0.0.1:8000/>，能看到工作台页面即成功。
-
-失败 → §9 排错表第 1–3 行。
-
----
-
-## 6. 微信实时采集（核心功能，默认要装）
-
-**架构**：不启动 Moect 图形界面。Windows 计划任务 `MessageHubHeadless` 每 5 分钟用**系统 Python + pythonw**直接调 Moect 的 GPL 源码 `Service.connect()`，静默产明文快照；看门狗 `MessageHubWatchdog` 每 5 分钟保活网页服务和采集器，采集器只读快照入库。两者都不弹窗、不需要人工干预。
-
-### 6.1 前提（用户要做，AI 不要代替）
-
-- 微信桌面版**已登录**且是 **4.x**，保持后台运行
-- 微信数据在非标准目录时，需要用户在 Moect 配置里指过去
-
-### 6.2 一条命令完成全部安装
+用户选择 Windows 自动采集时，确认微信桌面版 4.x 已由用户登录。项目根目录运行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
 ```
 
-这条脚本会自动完成（**路径全部从脚本自身位置推导，clone 到任何目录都能用**）：
+脚本查找或下载独立的 Moect GPL 源码、为系统 Python 安装采集依赖，注册 `MessageHubHeadless` 和 `MessageHubWatchdog` 计划任务以及桌面通知快捷方式；无需安装 Moect 图形程序。`-DryRun` 仅预览，不完成安装。既有同名任务如属于其他安装，先核对实际路径，不能静默覆盖其他项目。
 
-1. 探测 Moect GPL 源码；没有就 clone 到 `<项目目录>\moect_src`（已自动 gitignore，不会污染本仓库）
-2. 找一个系统 Python（3.11+，非 venv），缺依赖就装 `psutil pycryptodomex zstandard pillow python-dotenv`（headless 只需要这几个，**不装** PySide6 / pythonnet / WebView2 那些会出问题的 GUI 栈）
-3. 注册两个计划任务（登录时 + 每 5 分钟，均无需管理员权限）：
-   - `MessageHubHeadless` → `pythonw.exe moect_headless.py --once`（静默产快照，12 分钟预算）
-   - `MessageHubWatchdog` → `powershell.exe watchdog.ps1`（保活服务 + 采集器）
+检查任务的 `State`、`Actions` 和最近运行结果；脚本成功或任务存在只能证明已注册，不证明采集成功。可启动刚安装的看门狗任务，或使用项目静默启动器；在受管沙箱中不要依赖随会话结束而被清理的后台进程。登录触发器与看门狗会保活；额外注册 Run 键仅在用户需要登录后立即启动时使用，先检查现有值，避免覆盖其他安装。
 
-想先看会做什么、不修改系统：命令末尾加 ` -DryRun`。
+如果用户只需要手动导入，跳过本节；使用工作台“导入与采集”上传或扫描文件。导入不保证任意 CSV/TXT 格式都能保留原始来源和时间。
 
-✅ 验收（脚本末尾会打印两个任务的 State / Execute）；再手动核对：
+## 5. 验收与交付
 
-```powershell
-Get-ScheduledTask -TaskName "MessageHubHeadless","MessageHubWatchdog" | Select-Object TaskName,State
-```
+1. 检查 `http://127.0.0.1:8000/api/health` 返回 `status: ok`；如使用 `curl.exe`，可用 `--noproxy "*"` 避免系统代理干扰。8000 已被占用时先确认进程身份，不要擅自终止其他服务或猜测改端口位置。
+2. 打开工作台 `/`，确认页面实际加载；打开 `/select`，确认用户选择的工作和混合会话已保存。没有可选择的会话时检查新快照及微信状态，不编造成功。
+3. 自动采集首次等待新快照，结合 `runtime/moect_headless.log`、`runtime/moect_live.log`、`runtime/moect_live_state.json` 的完成时间、`last_stats.drained` 和失败数检查；排查输出须脱敏。确认计划任务注册、快照生成、消息入库和事项识别分别有实际证据；没有新消息时只能报告服务就绪，不能声称端到端通过。
+4. 通过工作台 `/api/personal-tasks/status` 检查后台状态和异常；API 配置是否填写只验证布尔状态，不打印内容。规则不依赖 API；API 未实际测试就标明未验证。
+5. 告诉用户日常入口、微信需要保持登录、采集是分钟级而非即时、规则可能漏判，以及桌面通知依赖系统环境。通过 Git 克隆的 Windows 安装可在新版本提示出现后一键更新；旧安装首次升级仍需手动更新。ZIP 安装不支持一键更新。
 
-### 6.3 首次采集验收（等 5–10 分钟）
-
-```bat
-type runtime\moect_headless.log
-type runtime\moect_live.log
-curl -s http://127.0.0.1:8000/api/capture-status
-```
-
-✅ 成功标志：
-
-- `moect_headless.log` 出现 `connect 结束: completed ... 找到 N 个会话`、`本轮结果: OK`
-- `moect_live.log` 出现 `统计: 扫描=... 推送=... 入库=...`
-- 网页工作台「消息总数」持续增长
-
-> 首次运行时 headless 桥会自行检测已登录的微信账号，从微信进程内存提取解密凭据（不启动图形界面、不需要预置任何 keys/config 文件），快照写到项目 `runtime/moect_data/archives/`。凭据只落在本机该目录，不打印、不进日志、不上传。快照单份可达 1.5 GB，采集器会自动清掉旧副本，磁盘只留一份。
-
----
-
-## 7. 开机自启（零操作体验）
-
-§6 的脚本已经注册了两个计划任务，**登录微信后快照刷新和服务保活就已经全自动了**。再多装一步注册表 Run 键，是为了登录后**立即**打开网页服务（否则最多等 5 分钟看门狗拉起）：
-
-**本地 Agent**（PowerShell）：
-
-```powershell
-$VBS = "<项目根目录绝对路径>\scripts\autostart_silent.vbs"
-New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "MessageHub" -PropertyType String -Value "wscript.exe `"$VBS`"" -Force | Out-Null
-(Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run").MessageHub
-```
-
-（`<项目根目录绝对路径>` 换成实际值，例如 `C:\Users\Alice\Desktop\MessageHub`；用 `(Get-Location).Path` 在项目根目录里取。）
-
-**远程对话 AI**：把上面 3 行发给用户，在 PowerShell 里粘贴执行。
-
-✅ 验收：最后一条输出 `wscript.exe "...autostart_silent.vbs"`。
-
-取消自启：删 Run 键 + 停用/删除两个计划任务：
-
-```powershell
-Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "MessageHub"
-Disable-ScheduledTask -TaskName "MessageHubHeadless","MessageHubWatchdog"
-```
-
-> 全部无需管理员权限。启动器幂等：服务已在跑时自动退出，不会起两份。
-
----
-
-## 8. 邮件机制（装完告诉用户会收到什么）
-
-| 路径 | 时机 | 邮件标题 |
-|---|---|---|
-| 唤醒补扫 | 启动后新微信快照完整入库并处理完毕 | `[MessageHub] 积压整理 …` |
-| 每小时汇总 | 常驻期间每 1 小时 | `[MessageHub] 每小时汇总 …` |
-| 紧急加急 | 处理到 24 小时内截止的个人任务时 | `[MessageHub] ⚡加急 …` |
-
-每小时汇总当前全部未完成任务，明确完成后不再进入后续待办；加急任务在完成前仍会出现在每小时待办中。24 小时内截止的个人任务尝试发加急邮件和 Windows 桌面通知。**没配 SMTP 就不发邮件**，网页照样能看。没有待办和待确认事项时静默。
-
----
-
-## 9. 排错速查表
-
-| # | 现象 | 原因 | 处理 |
-|---|---|---|---|
-| 1 | `/api/health` 连不上 | 服务没起来 / 端口被占 | 看 uvicorn 输出；`netstat -ano \| findstr :8000` 查占用；被占则换端口（启动 bat 里 8000→8001 共 5 处 + `.env` 的 `PORT=8001`） |
-| 2 | `pip install` 失败 | 网络 / 代理 | §4.1 的清华镜像命令 |
-| 3 | `import messagehub.app` 报错 | 依赖没装全 / .venv 损坏 | 重跑 §4.1；仍不行删 `.venv` 重来 |
-| 4 | 网页能开但简报空白 | `personal.json` 没填 / 群名不精确 / 还没采到消息 | §4.3 重写；群名必须和微信显示一字不差；再看 §6.3 日志确认有入库 |
-| 5 | `moect_headless.log` 报「找不到 Moect GPL 源码」 | clone 失败或路径不对 | clone <https://github.com/mofan6/Moect> 后在 `.env` 写 `MOECT_SRC=<源码目录绝对路径>`（目录下应有 `core/service.py`） |
-| 6 | headless 一直等 connect / 连到 0 会话 | 微信没登录、刚升级、或数据目录不在标准位置 | 登录微信桌面版并保持运行；重启微信再试；确认微信 4.x |
-| 7 | 找不到快照 / 采集器没入库 | 计划任务没跑或系统 Python 依赖缺失 | 重跑 §6.2 脚本；看 `runtime/watchdog.log`；`type runtime\moect_headless.log` |
-| 8 | 每 5 分钟弹 CMD 黑框 | 计划任务用了 `python.exe` | 重跑 §6.2 脚本（它用 `pythonw.exe` 静默版） |
-| 9 | 从沙箱终端跑 headless 看不到微信进程 | 终端注入污染进程枚举 | 不要从 AI 终端嵌套拉起；交给 §6 装好的计划任务 |
-| 10 | 杀毒软件报脚本有风险 | 误报 | 先核实告警内容和脚本来源，再由用户决定是否信任 |
-| 11 | AI 摘要 / 分级接口把服务卡死 | 旧版本 bug | `git pull` 更新后重启（2026-11-19 已修复） |
-| 12 | 没收到邮件 | 没配 SMTP / 无事静默 / 服务没跑 | 查 `.env` 的 SMTP 五项（`SMTP_PASS` 是授权码）；查日志 `[digest]` 字样；`runtime/digest_state.json` 是否存在；没事件时按设计不发 |
-
-排不掉的问题让用户带完整报错去 <https://github.com/Eagle-Xu0213/MessageHub/issues> 提 Issue。
-
----
-
-## 10. 完成后告诉用户的话
-
-安装收尾时用一段话向用户交代（远程 AI 让用户保存）：
-
-1. **日常入口**：<http://127.0.0.1:8000/> 工作台；`/brief` 简报；`/live` 消息流；`/memories` 去年今日
-2. **会收到什么**：配置邮箱后，启动补扫完成时和每小时整理当前未完成待办；符合条件的急事尝试发邮件及桌面通知。没配邮箱则不发邮件
-3. **每天要做的**：只登录微信桌面版并保持运行。定期检查服务和采集状态；识别可能遗漏重要事项
-4. **数据在哪**：数据库和微信快照保存在本机 `runtime\`；启用 AI 或邮件会向相关服务发送内容，部分 AI 请求可能使用第三方备用服务。卸载前先移除两个计划任务和 Run 键，再按需备份或删除项目文件夹
-5. **改配置**：记事本编辑 `config\personal.json`（加减工作群）保存即可，下一轮自动生效；改完身份/群名想立即看效果，重启一次服务
-6. **自检**：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1" -DryRun` 可随时核对计划任务配置是否正确
+遇到 Moect 源码缺失、微信未登录、数据目录非标准、Python 依赖缺失、端口占用或权限失败时，读取相应日志并按实际原因修复；不删数据库、快照、`.env` 或个人配置，不替用户登录微信。若无法取得新消息或触发通知，明确说明未验证的环节。用户提出新功能开发任务时，按其范围执行，不要把安装指南误当成必须重新安装的指令。

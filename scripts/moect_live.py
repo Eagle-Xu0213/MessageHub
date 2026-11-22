@@ -694,6 +694,7 @@ def _private_whitelist() -> set:
                 s = str(v).strip()
                 if s:
                     names.add(s)
+        names.difference_update(str(v).strip() for v in contacts.get("excluded") or [] if v)
         return names
     except (OSError, json.JSONDecodeError, AttributeError):
         return set()

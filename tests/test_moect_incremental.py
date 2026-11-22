@@ -320,3 +320,18 @@ def test_generation_marked_only_after_all_ingests_succeed(ml, tmp_path, monkeypa
     completed = ml.run_once(_Args(limit=10), failed)
     assert completed['processed_generation'] == 'generation-one'
     assert completed['last_stats']['drained'] is True
+
+
+def test_selected_private_messages_respect_whitelist(ml, tmp_path, monkeypatch):
+    snap = build_snapshot(tmp_path, [(PRIV, 1, 101, 1, 1000, '工作消息')])
+    monkeypatch.setattr(ml, '_private_whitelist', lambda: {'某私聊'})
+    messages, _ = ml.read_new_messages(snap, 900, 10, groups_only=False)
+    assert [item['text'] for item in messages] == ['工作消息']
+    monkeypatch.setattr(ml, '_private_whitelist', lambda: set())
+    messages, _ = ml.read_new_messages(snap, 900, 10, groups_only=False)
+    assert messages == []
+
+
+def test_standard_launchers_enable_selected_private_contacts():
+    for name in ('启动 MessageHub.bat', 'scripts/autostart_silent.vbs', 'scripts/watchdog.ps1'):
+        assert '--include-private' in (ROOT / name).read_text(encoding='utf-8-sig')

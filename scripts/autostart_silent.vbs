@@ -22,7 +22,7 @@ shell.CurrentDirectory = project & "\src"
 ' 1) 实时采集器（完全隐藏；已有实例时 8765 锁冲突立即退出）
 '    窗口样式 0：不留任务栏/托盘痕迹。有 5 分钟级计划任务看门狗兜底，
 '    进程意外退出后自动复活，无需人工干预。
-cmd = """" & python & """ """ & project & "\scripts\moect_live.py"" --loop --interval 120 --no-refresh --selected-groups"
+cmd = """" & python & """ """ & project & "\scripts\moect_live.py"" --loop --interval 120 --no-refresh --selected-groups --include-private"
 shell.Run cmd, 0, False
 
 ' 2) API 服务（完全隐藏；8000 已被占用时 uvicorn 端口冲突自动退出）

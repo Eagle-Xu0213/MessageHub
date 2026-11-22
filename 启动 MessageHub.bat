@@ -54,7 +54,7 @@ rem 服务在跑时不要重复启动 uvicorn（会端口冲突）；采集器�
 curl -s -m 2 http://127.0.0.1:8000/api/health >nul 2>&1
 if %errorlevel%==0 (
   echo   MessageHub 已在运行，直接打开页面。
-  start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups
+  start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups --include-private
   start "" "http://127.0.0.1:8000/live"
   exit /b 0
 )
@@ -77,7 +77,7 @@ echo.
 start "" "http://127.0.0.1:8000/"
 
 rem 后台常驻：Moect 解密快照 -> 实时消息采集（最小化窗口，日志 runtime\moect_live.log）
-start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups
+start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups --include-private
 
 "%PYTHON%" -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000 --log-level warning
 

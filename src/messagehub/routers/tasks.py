@@ -18,6 +18,40 @@ class TaskUpdate(BaseModel):
     status: str
 
 
+@router.get("/api/personal-tasks/status")
+async def personal_task_status():
+    from messagehub.task_runtime import get_scheduler
+    return JSONResponse(dict(get_scheduler().state))
+
+
+@router.get("/api/personal-tasks")
+async def personal_tasks(status: Optional[str] = None):
+    conn = get_db()
+    try:
+        if status == "completed":
+            rows = conn.execute("SELECT * FROM personal_tasks WHERE status='completed' ORDER BY updated_at DESC LIMIT 200")
+        else:
+            rows = conn.execute("SELECT * FROM personal_tasks WHERE status != 'completed' ORDER BY CASE status WHEN 'review' THEN 1 ELSE 0 END, CASE WHEN deadline IS NULL THEN 1 ELSE 0 END, deadline, id DESC")
+        return JSONResponse({"tasks": [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@router.put("/api/personal-tasks/{task_id}")
+async def update_personal_task(task_id: int, update: TaskUpdate):
+    if update.status not in ('pending', 'accepted', 'in_progress', 'completed', 'review'):
+        raise HTTPException(status_code=400, detail="任务状态无效")
+    conn = get_db()
+    try:
+        cur = conn.execute("UPDATE personal_tasks SET status=?, updated_at=? WHERE id=?", (update.status, datetime.now(CN_TZ).isoformat(), task_id))
+        conn.commit()
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        return JSONResponse({"status": "ok"})
+    finally:
+        conn.close()
+
+
 @router.get("/api/tasks")
 async def get_tasks(status: Optional[str] = None):
     """获取任务列表"""

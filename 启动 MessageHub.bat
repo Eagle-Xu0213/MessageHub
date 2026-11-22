@@ -45,6 +45,8 @@ exit /b 1
 :python_ok
 set "PYTHONPATH=%ROOT%\src"
 set "PYTHONIOENCODING=utf-8"
+set "COLLECTOR_PYTHON=%PYTHON%"
+if exist "%ROOT%\.venv\Scripts\pythonw.exe" set "COLLECTOR_PYTHON=%ROOT%\.venv\Scripts\pythonw.exe"
 set "MESSAGEHUB_ROOT=%ROOT%"
 
 rem ---------- 服务已在运行则只打开页面 ----------
@@ -52,7 +54,7 @@ rem 服务在跑时不要重复启动 uvicorn（会端口冲突）；采集器�
 curl -s -m 2 http://127.0.0.1:8000/api/health >nul 2>&1
 if %errorlevel%==0 (
   echo   MessageHub 已在运行，直接打开页面。
-  start "MessageHub 实时采集" /MIN "%PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120
+  start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups
   start "" "http://127.0.0.1:8000/live"
   exit /b 0
 )
@@ -75,7 +77,7 @@ echo.
 start "" "http://127.0.0.1:8000/"
 
 rem 后台常驻：Moect 解密快照 -> 实时消息采集（最小化窗口，日志 runtime\moect_live.log）
-start "MessageHub 实时采集" /MIN "%PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120
+start "" /B "%COLLECTOR_PYTHON%" "%ROOT%\scripts\moect_live.py" --loop --interval 120 --no-refresh --selected-groups
 
 "%PYTHON%" -m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000 --log-level warning
 

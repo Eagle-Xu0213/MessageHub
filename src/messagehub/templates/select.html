@@ -353,11 +353,12 @@ function clearChips() {
 }
 
 $("#saveBtn").addEventListener("click", async () => {
-  const payload = { groups: { work: [], watch: [], excluded: [] },
+  const payload = { group_ids: { work: {}, watch: {}, excluded: {} }, groups: { work: [], watch: [], excluded: [] },
                     contacts: { work: [], watch: [], excluded: [] } };
   for (const c of ALL) {
     if (!c.level) continue;
     payload[LV_KEY[c.kind]][c.level].push(c.name);
+    if (c.kind === 'group' && c.id) payload.group_ids[c.level][c.id] = c.name;
   }
   const btn = $("#saveBtn");
   btn.disabled = true; btn.textContent = "保存中…";

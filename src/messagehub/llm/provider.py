@@ -1,6 +1,6 @@
 """可选 LLM 提供者：OpenAI Chat Completions 兼容接口。
 
-- 默认使用免费的 LLM7.io，无需密钥。
+- 配置 API 密钥后启用；部分请求失败时会尝试第三方备用服务。
 - 总结功能具备完整降级链：多模型重试 → JSON 稳健解析 → 本地规则摘要。
 - 任何失败都不影响主流程。
 """
@@ -21,12 +21,13 @@ try:
         Path(__file__).resolve().parents[3] / ".env",
         Path.cwd() / ".env",
     ]
-    for _p in _env_candidates:
+    for _p in ([] if os.environ.get('MESSAGEHUB_DISABLE_DOTENV') == '1' else _env_candidates):
         if _p.exists():
             load_dotenv(str(_p), override=True)
             break
     else:
-        load_dotenv()
+        if os.environ.get('MESSAGEHUB_DISABLE_DOTENV') != '1':
+            load_dotenv()
 except ImportError:
     pass
 

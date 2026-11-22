@@ -141,10 +141,16 @@ $watchdogSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
 
 if ($DryRun) {
+    Write-Host "[DryRun] Would register the per-user MessageHub notification shortcut."
     Write-Host "[DryRun] Headless action: $($headlessAction.Execute) $($headlessAction.Arguments)"
     Write-Host "[DryRun] Watchdog action: $($watchdogAction.Execute) $($watchdogAction.Arguments)"
     Write-Host "[DryRun] No scheduled tasks were modified."
 } else {
+    try {
+        & (Join-Path $PSScriptRoot 'install_toast_shortcut.ps1')
+    } catch {
+        Write-Warning "Notification shortcut could not be installed: $_"
+    }
     Register-ScheduledTask -TaskName "MessageHubHeadless" -Action $headlessAction `
         -Trigger $triggers -Settings $headlessSettings -Force | Out-Null
     Register-ScheduledTask -TaskName "MessageHubWatchdog" -Action $watchdogAction `

@@ -23,6 +23,7 @@ from messagehub.routers import brief, live, memories, tasks, scope
 from messagehub import schedule
 from messagehub import mail as brief_mail
 from messagehub import update
+from messagehub import task_pipeline, task_runtime
 
 app = FastAPI(title="MessageHub", version=update.__version__)
 
@@ -43,7 +44,7 @@ async def _combined_lifespan(_app: FastAPI):
     except Exception as e:
         print(f"[live] 自动启动失败：{e}")
     try:
-        schedule.get_scheduler().start()
+        task_runtime.get_scheduler().start()
         print("[brief-scheduler] 调度器已自动启动")
     except Exception as e:
         print(f"[brief-scheduler] 自动启动失败：{e}")
@@ -55,7 +56,7 @@ async def _combined_lifespan(_app: FastAPI):
     except Exception as e:
         print(f"[live] 停止采集失败：{e}")
     try:
-        schedule.get_scheduler().stop()
+        task_runtime.get_scheduler().stop()
         print("[brief-scheduler] 调度器已停止")
     except Exception as e:
         print(f"[brief-scheduler] 停止调度器失败：{e}")
@@ -80,6 +81,7 @@ app.include_router(scope.router)
 brief_mail.register()  # 邮件桥：简报有实质内容时自动发到配置的收件箱
 
 init_db()
+task_pipeline.initialize_database(DB_PATH)
 
 
 # ==================== 首页 / 健康 / 导入 / 扫描 ====================
@@ -94,10 +96,10 @@ async def index(request: None = None):
     cursor.execute("SELECT COUNT(*) FROM messages")
     total_messages = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('pending', 'uncertain')")
+    cursor.execute("SELECT COUNT(*) FROM personal_tasks WHERE status IN ('pending', 'accepted', 'in_progress')")
     pending_tasks = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'completed'")
+    cursor.execute("SELECT COUNT(*) FROM personal_tasks WHERE status = 'completed'")
     completed_tasks = cursor.fetchone()[0]
 
     # 今日摘要：今天导入的消息数
@@ -248,12 +250,16 @@ async def trigger_scan():
     # 线程池执行：run_extraction 全表扫描 + 每条可能同步调 LLM（15s/条），
     # 在 async 里跑会卡死事件循环（2026-11-19 事故，规则同 brief.py）
     import anyio
-    from messagehub.llm.provider import LLMProvider
-    from messagehub.pipeline.extract import run_extraction
-    llm = LLMProvider.from_env()
-    _llm = llm if llm.enabled else None
-    ext = await anyio.to_thread.run_sync(
-        lambda: run_extraction(str(DB_PATH), llm=_llm))
+    def process_new():
+        import sqlite3
+        with sqlite3.connect(str(DB_PATH), timeout=30) as conn:
+            created = 0
+            while True:
+                batch = task_pipeline.process_batch(conn)
+                created += batch["created"]
+                if batch["processed"] < 200:
+                    return {"created": created, "merged": 0}
+    ext = await anyio.to_thread.run_sync(process_new)
     return JSONResponse({
         "status": result["status"],
         "new": result["new"],

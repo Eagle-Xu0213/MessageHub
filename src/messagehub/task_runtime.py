@@ -1,0 +1,96 @@
+"""Background processing for the personal task pipeline."""
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+
+from messagehub.config import BASE_DIR, CN_TZ, DB_PATH
+from messagehub import task_pipeline, mail, desktop_notify
+
+
+class TaskScheduler:
+    def __init__(self, db_path=DB_PATH, state_path=None, poll_seconds=10, hourly_seconds=3600):
+        self.db_path = Path(db_path)
+        self.capture_path = Path(state_path or BASE_DIR / 'runtime' / 'moect_live_state.json')
+        self.poll_seconds = poll_seconds
+        self.hourly_seconds = hourly_seconds
+        self.started_at = datetime.now(CN_TZ)
+        self._stop = threading.Event()
+        self._thread = None
+        self.state = {'running': False, 'capture': '等待新快照', 'last_error': None}
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return {'started': False, 'reason': 'already running'}
+        self.started_at = datetime.now(CN_TZ)
+        self._stop.clear()
+        self.state['running'] = True
+        self._thread = threading.Thread(target=self._run, daemon=True, name='personal-task-scheduler')
+        self._thread.start()
+        return {'started': True}
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+        self.state['running'] = False
+        return {'stopped': True}
+
+    def snapshot_ready(self):
+        try:
+            state = json.loads(self.capture_path.read_text(encoding='utf-8'))
+            completed = task_pipeline._time(state.get('snapshot_completed_at'))
+            return bool(state.get('processed_generation') and completed and completed >= self.started_at
+                        and state.get('last_stats', {}).get('drained'))
+        except (OSError, ValueError, TypeError):
+            return False
+
+    def _run(self):
+        catchup_done = False
+        next_catchup = 0.0
+        next_hour = time.monotonic() + self.hourly_seconds
+        while not self._stop.is_set():
+            try:
+                with sqlite3.connect(str(self.db_path), timeout=30) as conn:
+                    batch = task_pipeline.process_batch(conn)
+                    # Drain queued message batches before summaries or alerts.
+                    if batch['processed'] >= 200:
+                        continue
+                    task_pipeline.send_due_alerts(
+                        conn, lambda ev: mail.send_urgent_email({'event': ev}),
+                        desktop_notify.notify_urgent)
+                    ready = self.snapshot_ready()
+                    self.state['capture'] = '补扫完成' if ready else '等待微信新快照'
+                    if ready and not catchup_done and time.monotonic() >= next_catchup:
+                        result = task_pipeline.send_current_digest(conn, mail.send_digest_email, 'catchup')
+                        # Keep retrying a failed email; empty state does not need an email.
+                        catchup_done = bool(result.get('sent') or result.get('skipped'))
+                        if catchup_done:
+                            self.state['mail_status'] = None
+                            next_hour = time.monotonic() + self.hourly_seconds
+                        else:
+                            self.state['mail_status'] = result.get('detail') or '邮件发送失败，稍后重试'
+                            next_catchup = time.monotonic() + 180
+                    if catchup_done and time.monotonic() >= next_hour:
+                        result = task_pipeline.send_current_digest(conn, mail.send_digest_email, 'hourly')
+                        if result.get('sent') or result.get('skipped'):
+                            self.state['mail_status'] = None
+                            next_hour = time.monotonic() + self.hourly_seconds
+                        else:
+                            self.state['mail_status'] = result.get('detail') or '邮件发送失败，稍后重试'
+                            next_hour = time.monotonic() + 180
+                    self.state['last_error'] = None
+            except Exception as exc:
+                self.state['last_error'] = f'{type(exc).__name__}: {exc}'
+            self._stop.wait(self.poll_seconds)
+
+
+_scheduler = TaskScheduler()
+
+
+def get_scheduler():
+    return _scheduler

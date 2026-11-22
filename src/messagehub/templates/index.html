@@ -135,11 +135,10 @@
 
             <div class="panel" style="grid-column: 1 / -1;">
                 <h2>🎯 待我处理 / 任务列表</h2>
-                <p style="font-size:13px;color:#5f6368;margin-bottom:10px;">
-                    任务提取已升级为「每日简报」——按确认过的规则从工作群提取事件、自动检测你是否已回复。
-                    <a href="/brief" style="color:#1a73e8;">打开每日简报 →</a>
-                    （下方的旧版任务列表保留兼容，规则提取较宽泛，以简报为准）
-                </p>
+                <p style="font-size:13px;color:#5f6368;margin-bottom:10px;">正式待办和待确认信息分开展示；点击完成可手动更新，已完成任务可恢复。</p>
+                <p id="task-pipeline-status" style="font-size:13px;color:#5f6368;margin-bottom:10px;">正在检查后台处理状态…</p>
+                <button class="btn btn-primary" onclick="loadTasks(false)">当前待办</button>
+                <button class="btn btn-primary" onclick="loadTasks(true)">已完成</button>
                 <ul class="task-list" id="task-list">
                     <!-- 动态加载 -->
                     <li class="task-item" style="color: #888;">暂无任务（导入消息后自动提取）</li>
@@ -186,49 +185,36 @@
             }
         }
 
-        // 加载任务列表
-        async function loadTasks() {
-            const res = await fetch('/api/tasks');
+        let showCompleted = false;
+        async function loadTasks(completed = showCompleted) {
+            showCompleted = completed;
+            const res = await fetch('/api/personal-tasks' + (completed ? '?status=completed' : ''));
             const data = await res.json();
-            
             const listEl = document.getElementById('task-list');
-            if (data.tasks.length === 0) {
-                listEl.innerHTML = '<li class="task-item" style="color:#888;">暂无任务（导入消息后自动提取）</li>';
+            if (!data.tasks.length) {
+                listEl.innerHTML = '<li class="task-item">暂无任务</li>';
                 return;
             }
-
+            const labels = {pending:'待处理', accepted:'已接受', in_progress:'进行中', completed:'已完成', review:'待确认'};
             listEl.innerHTML = data.tasks.map(task => `
-                <li class="task-item">
+                <li class="task-item" id="task-${task.id}">
                     <div class="task-info">
-                        <div class="task-title">${escapeHtml(task.title)}</div>
-                        <div class="task-meta">
-                            ${task.category || '待分类'} · 
-                            ${task.deadline ? '截止：' + task.deadline : '无截止时间'} · 
-                            ${task.my_role || '负责人待确认'}
-                        </div>
+                        <div class="task-title">${escapeHtml(task.text)}</div>
+                        <div class="task-meta">${escapeHtml(labels[task.status] || task.status)} · ${escapeHtml(task.category)} · ${escapeHtml(task.conversation_name)} · ${task.deadline ? '截止：' + escapeHtml(task.deadline) : '截止时间未说明'}</div>
+                        <div class="task-meta">${escapeHtml(task.reason)}</div>
                     </div>
                     <div class="task-actions">
-                        <button class="btn btn-success" onclick="completeTask(${task.id})">✓</button>
-                        <button class="btn btn-danger" onclick="deleteTask(${task.id})">×</button>
+                        ${task.status === 'review' ? `<button class="btn btn-primary" onclick="setTask(${task.id}, 'pending')">加入待办</button>` : ''}
+                        <button class="btn btn-success" onclick="setTask(${task.id}, '${completed ? 'pending' : 'completed'}')">${completed ? '恢复' : '完成'}</button>
                     </div>
-                </li>
-            `).join('');
+                </li>`).join('');
+            if (location.hash && /^#task-\d+$/.test(location.hash)) {
+                document.getElementById(location.hash.slice(1))?.scrollIntoView({block: 'center'});
+            }
         }
-
-        async function completeTask(id) {
-            await fetch(`/api/tasks/${id}`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({status: 'completed'})
-            });
-            loadTasks();
-            location.reload();
-        }
-
-        async function deleteTask(id) {
-            if (!confirm('确定删除此任务？')) return;
-            await fetch(`/api/tasks/${id}`, {method: 'DELETE'});
-            loadTasks();
+        async function setTask(id, status) {
+            await fetch(`/api/personal-tasks/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status})});
+            await loadTasks();
         }
 
         function escapeHtml(text) {
@@ -239,6 +225,17 @@
 
         // 初始化
         loadTasks();
+        async function loadPipelineStatus() {
+            try {
+                const state = await (await fetch('/api/personal-tasks/status')).json();
+                document.getElementById('task-pipeline-status').textContent =
+                    '后台：' + (state.capture || '等待启动') + (state.mail_status ? ' · 邮件：' + state.mail_status : '') + (state.last_error ? ' · 处理异常：' + state.last_error : '');
+            } catch (_) {
+                document.getElementById('task-pipeline-status').textContent = '后台状态暂不可用';
+            }
+        }
+        loadPipelineStatus();
+        setInterval(loadPipelineStatus, 30000);
 
         async function triggerScan() {
             const el = document.getElementById('scan-result');

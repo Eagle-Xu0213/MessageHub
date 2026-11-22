@@ -33,7 +33,7 @@ if (-not (Test-Port 8000)) {
 if (-not (Test-Port 8765)) {
     Log "Collector down - starting moect_live loop (no-refresh: snapshot comes from headless task)"
     Start-Process -FilePath $python `
-        -ArgumentList "$project\scripts\moect_live.py","--loop","--interval","120","--no-refresh" `
+        -ArgumentList "$project\scripts\moect_live.py","--loop","--interval","120","--no-refresh","--selected-groups" `
         -WorkingDirectory "$project\src" -WindowStyle Hidden
 }
 

@@ -28,7 +28,7 @@ from typing import Any, Dict, Optional
 try:
     from dotenv import load_dotenv
     _p = Path(__file__).resolve().parents[2] / ".env"
-    if _p.exists():
+    if _p.exists() and os.environ.get('MESSAGEHUB_DISABLE_DOTENV') != '1':
         load_dotenv(str(_p), override=False)
 except ImportError:
     pass
@@ -237,7 +237,7 @@ def _send_html(subject: str, html_body: str) -> Dict[str, Any]:
 
 def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
     st = payload.get("stats", {})
-    if not st.get("open") and not st.get("resolved"):
+    if not st.get("open") and not st.get("resolved") and not st.get("review"):
         return {"sent": False, "detail": "空整理，静默"}
     kind = payload.get("kind") or "catchup"
     label = "每小时汇总" if kind == "hourly" else "积压整理"

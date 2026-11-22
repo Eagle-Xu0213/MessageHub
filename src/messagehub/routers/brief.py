@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import anyio
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jinja2 import Environment, FileSystemLoader
 
 from messagehub.brief import generate_brief, get_baseline
@@ -48,22 +48,24 @@ def _latest_brief(conn: sqlite3.Connection, date: Optional[str]) -> Optional[Dic
 async def get_brief(date: Optional[str] = Query(None),
                     days: int = Query(1, ge=1, le=30),
                     regenerate: bool = False):
-    """取简报：默认最新一份；指定 date 取当天；regenerate=true 现场重算。
-
-    现场生成含同步 LLM 调用，必须在 worker 线程跑（阻塞事件循环事故见模块 docstring）。
-    """
-    if not regenerate:
-        conn = get_db()
-        try:
-            brief = _latest_brief(conn, date)
-            if brief:
-                return JSONResponse(brief)
-        finally:
-            conn.close()
-    target_date = date or now_cn_iso()[:10]
-    brief = await anyio.to_thread.run_sync(
-        lambda: generate_brief(days=days, date=target_date, save=True))
-    return JSONResponse(brief)
+    """Current brief uses the same persistent tasks as the workbench."""
+    conn = get_db()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM personal_tasks WHERE status!='review' ORDER BY id DESC LIMIT 500")]
+    finally:
+        conn.close()
+    sections = {'todos': [], 'replies': [], 'notices': [], 'resolved': []}
+    for row in rows:
+        event = {'message_id': row['message_id'], 'sent_at': row['sent_at'],
+                 'group': row['conversation_name'], 'sender': row['sender_name'],
+                 'text': row['text'], 'deadline': row['deadline'],
+                 'reply_status': 'answered_ok' if row['status'] == 'completed' else 'unanswered',
+                 'reply_evidence': None}
+        sections['resolved' if row['status'] == 'completed' else 'todos'].append(event)
+    return JSONResponse({'date': now_cn_iso()[:10], 'sections': sections,
+                         'ai_summary': '当前任务状态', 'degraded': True,
+                         'stats': {'total': len(rows), **{k: len(v) for k, v in sections.items()}}})
 
 
 @router.get("/api/brief/dates")
@@ -113,20 +115,8 @@ async def event_context(message_id: int, around: int = Query(5, ge=0, le=20)):
 
 @router.get("/brief", response_class=HTMLResponse)
 async def brief_page(date: Optional[str] = None):
-    """简报页面：默认最新一份简报。生成走 worker 线程（同 /api/brief）。"""
-    conn = get_db()
-    try:
-        brief = _latest_brief(conn, date)
-        dates = [r[0] for r in conn.execute(
-            "SELECT date FROM briefs ORDER BY date DESC LIMIT 60").fetchall()]
-    finally:
-        conn.close()
-    if not brief:
-        brief = await anyio.to_thread.run_sync(
-            lambda: generate_brief(days=1, save=True))
-        dates = [brief["date"]]
-    template = _templates.get_template("brief.html")
-    return HTMLResponse(template.render(brief=brief, dates=dates))
+    """The task board is the single current view; historical data is retained."""
+    return RedirectResponse(url="/", status_code=307)
 
 
 @router.post("/api/brief/reset")

@@ -17,6 +17,7 @@ import pytest
 @pytest.fixture()
 def tmp_personal(tmp_path, monkeypatch):
     """临时配置文件 + 指向它的环境变量。"""
+    previous = os.environ.get("MESSAGEHUB_PERSONAL_CONFIG")
     cfg = tmp_path / "personal.json"
     base = {
         "identity": {
@@ -33,7 +34,12 @@ def tmp_personal(tmp_path, monkeypatch):
     monkeypatch.setenv("MESSAGEHUB_PERSONAL_CONFIG", str(cfg))
     from messagehub import personal
     personal.reload()
-    return cfg
+    yield cfg
+    if previous is None:
+        monkeypatch.delenv("MESSAGEHUB_PERSONAL_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("MESSAGEHUB_PERSONAL_CONFIG", previous)
+    personal.reload()
 
 
 def _write(cfg: Path, data: dict) -> None:

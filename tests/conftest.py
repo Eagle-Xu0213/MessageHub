@@ -51,6 +51,7 @@ os.environ["MESSAGEHUB_PERSONAL_CONFIG"] = str(
 )
 
 # 测试不调用真实 LLM / SMTP
+os.environ["MESSAGEHUB_DISABLE_DOTENV"] = "1"
 os.environ.pop("LLM_API_KEY", None)
 os.environ.pop("SMTP_PASS", None)
 

@@ -44,6 +44,7 @@ _DEFAULTS: Dict[str, Any] = {
         "watch": [],
         "excluded": [],
     },
+    "group_ids": {"work": [], "watch": [], "excluded": []},
     # 私聊联系人分级（2026-11-18 新增）：工作=发来即工作内容；
     # watch=工作生活混合（需任务语义才报）；excluded=纯生活不检测。
     # 值为联系人「备注或昵称」（Moect 采集桥写入的 conversation_name 同源）。
@@ -112,6 +113,12 @@ def _as_set(values: Any) -> Set[str]:
     return {str(v).strip() for v in values if str(v).strip()}
 
 
+def _bound_ids(values: Any, names: Set[str]) -> Set[str]:
+    if not isinstance(values, dict):
+        return set()
+    return {str(gid) for gid, name in values.items() if name in names}
+
+
 # ------------------------- 身份 -------------------------
 
 _identity = _CONFIG.get("identity", {})
@@ -143,6 +150,10 @@ _groups = _CONFIG.get("groups", {})
 WORK_GROUPS: Set[str] = _as_set(_groups.get("work"))
 WATCH_GROUPS: Set[str] = _as_set(_groups.get("watch"))
 EXCLUDED_GROUPS: Set[str] = _as_set(_groups.get("excluded"))
+_group_ids = _CONFIG.get("group_ids", {}) or {}
+WORK_GROUP_IDS = _bound_ids(_group_ids.get("work"), WORK_GROUPS)
+WATCH_GROUP_IDS = _bound_ids(_group_ids.get("watch"), WATCH_GROUPS)
+EXCLUDED_GROUP_IDS = _bound_ids(_group_ids.get("excluded"), EXCLUDED_GROUPS)
 
 # ------------------------- 私聊联系人分层 -------------------------
 # 三级语义与群一致：work=发来即工作（非噪声即报）；watch=混合（需任务语义）；
@@ -186,6 +197,7 @@ def reload() -> None:
     """
     global _CONFIG, MY_NICKNAMES, MY_REALNAME, MY_SHORTNAME, MY_SENDER_NAMES
     global IDENTITY_CONFIGURED, WORK_GROUPS, WATCH_GROUPS, EXCLUDED_GROUPS
+    global WORK_GROUP_IDS, WATCH_GROUP_IDS, EXCLUDED_GROUP_IDS
     global WORK_CONTACTS, WATCH_CONTACTS, EXCLUDED_CONTACTS
     global CONVERSATION_ALIASES, BRIEF_PERSONA
 
@@ -201,6 +213,10 @@ def reload() -> None:
     WORK_GROUPS = _as_set(_groups.get("work"))
     WATCH_GROUPS = _as_set(_groups.get("watch"))
     EXCLUDED_GROUPS = _as_set(_groups.get("excluded"))
+    _group_ids = _CONFIG.get("group_ids", {}) or {}
+    WORK_GROUP_IDS = _bound_ids(_group_ids.get("work"), WORK_GROUPS)
+    WATCH_GROUP_IDS = _bound_ids(_group_ids.get("watch"), WATCH_GROUPS)
+    EXCLUDED_GROUP_IDS = _bound_ids(_group_ids.get("excluded"), EXCLUDED_GROUPS)
 
     _contacts = _CONFIG.get("contacts", {}) or {}
     WORK_CONTACTS = _as_set(_contacts.get("work"))

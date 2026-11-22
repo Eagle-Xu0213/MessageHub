@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import argparse
+import heapq
 import hashlib
 import json
 import os
@@ -56,7 +57,8 @@ ROOT = Path(os.environ.get("MESSAGEHUB_ROOT") or Path(__file__).resolve().parent
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(str(ROOT / ".env"), override=False)
+    if os.environ.get('MESSAGEHUB_DISABLE_DOTENV') != '1':
+        load_dotenv(str(ROOT / ".env"), override=False)
 except ImportError:
     pass
 
@@ -100,6 +102,7 @@ MAX_TEXT_LEN = 8000
 # 单轮最多翻多少页。大积压时一轮内多取几次，避免每 2 分钟只消化一页；
 # 达到上限时本轮标记 drained=False，游标持久化，下一轮继续。
 MAX_PAGES_PER_RUN = 20
+SELECTED_GROUPS_ONLY = False
 
 
 LOG_FILE = ROOT / "runtime" / "moect_live.log"
@@ -211,7 +214,7 @@ def consolidate(snaps: list) -> Path:
                 os.replace(str(f), str(dst))
                 moved += 1
             except OSError:
-                pass
+                raise
         for d in sorted((x for x in src.rglob("*") if x.is_dir()),
                         key=lambda x: len(x.parts), reverse=True):
             try:
@@ -338,7 +341,8 @@ def _refresh_headless(src_dir: Path) -> bool:
     try:
         r = subprocess.run(
             [py, str(ROOT / "scripts" / "moect_headless.py")],
-            capture_output=True, timeout=720, cwd=str(ROOT), env=child_env)
+            capture_output=True, timeout=720, cwd=str(ROOT), env=child_env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         out = (r.stdout or b"").decode("utf-8", errors="replace")
         for line in out.strip().splitlines():
             if line.startswith("["):
@@ -614,8 +618,10 @@ def build_maps(snap: Path) -> tuple:
     if contact.exists():
         try:
             c = sqlite3.connect(f"file:{contact}?mode=ro", uri=True)
+            cols = {row[1] for row in c.execute('PRAGMA table_info(contact)')}
+            alias_field = 'alias' if 'alias' in cols else "''"
             for u, nick, remark, alias in c.execute(
-                    "SELECT username, nick_name, remark, alias FROM contact"):
+                    f"SELECT username, nick_name, remark, {alias_field} FROM contact"):
                 name = (remark or "").strip() or (nick or "").strip()
                 if not name or name == "-":
                     continue
@@ -641,8 +647,8 @@ def build_maps(snap: Path) -> tuple:
                 if MSG_TABLE_RE.match(r[0])]
             c.close()
             db_maps[p] = (rid2wx, md5_2conv, tables)
-        except Exception:
-            continue
+        except sqlite3.Error:
+            raise
     return names, db_maps
 
 
@@ -693,6 +699,28 @@ def _private_whitelist() -> set:
         return set()
 
 
+def _selected_group_filter():
+    """Return configured names and stable ID bindings; unreadable means deny."""
+    try:
+        config = json.loads((ROOT / 'config' / 'personal.json').read_text(encoding='utf-8'))
+        groups = config.get('groups') or {}
+        bindings = config.get('group_ids') or {}
+        names = set(groups.get('work') or []) | set(groups.get('watch') or [])
+        excluded = set(groups.get('excluded') or [])
+        ids, bound_names, excluded_ids = set(), set(), set()
+        for level in ('work', 'watch', 'excluded'):
+            mapping = bindings.get(level) or {}
+            if not isinstance(mapping, dict):
+                continue
+            for gid, name in mapping.items():
+                if name in (excluded if level == 'excluded' else names):
+                    (excluded_ids if level == 'excluded' else ids).add(gid)
+                    bound_names.add(name)
+        return names, excluded, ids, excluded_ids, bound_names
+    except (OSError, ValueError, AttributeError, TypeError):
+        return set(), set(), set(), set(), set()
+
+
 def _iter_candidate_rows(snap: Path, watermark: int, cursor: dict | None,
                          groups_only: bool) -> tuple:
     """按确定性顺序遍历候选行，并给出精确的过滤统计。
@@ -712,73 +740,83 @@ def _iter_candidate_rows(snap: Path, watermark: int, cursor: dict | None,
     # 白名单在轮次开始时取一次：一轮之内配置不变是合理假设，
     # 页面保存的改动下一轮（≤interval 秒后）生效
     private_allow = _private_whitelist() if not groups_only else set()
+    selected = _selected_group_filter() if SELECTED_GROUPS_ONLY else None
 
     def gen():
-        for db_path, (rid2wx, md5_2conv, tables) in db_maps.items():
-            try:
-                c = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            except Exception:
-                continue
-            for t in tables:
-                conv = md5_2conv.get(t[4:])
-                if not conv:
-                    continue
-                # 授权边界：群聊直接放行；私聊只放行 contacts 分层勾选的联系人
-                if not conv.endswith("@chatroom"):
-                    display = names.get(conv, conv)
-                    if display not in private_allow:
-                        stats["filtered_private"] += 1
-                        continue
-                sql = (f'SELECT local_id, server_id, local_type, real_sender_id, '
-                       f'create_time, message_content, WCDB_CT_message_content '
-                       f'FROM "{t}" WHERE create_time >= ?')
-                params: list = [watermark]
-                if cursor and cursor.get("state") == "after":
-                    # 排他游标：严格位于 (ct, lid, table) 之后的记录才取
-                    sql += (' AND (create_time > ?'
-                            ' OR (create_time = ? AND local_id > ?)'
-                            ' OR (create_time = ? AND local_id = ? AND ? > ?))')
-                    params += [cursor["ct"], cursor["ct"], cursor["lid"],
-                               cursor["ct"], cursor["lid"], t, cursor["table"]]
-                sql += " ORDER BY create_time, local_id"
+        # Merge ordered table cursors, never materializing an entire table.
+        connections = []
+        streams = []
+        after = cursor if cursor and cursor.get("state") == "after" else None
+        try:
+            for db_path, (rid2wx, md5_2conv, tables) in db_maps.items():
                 try:
-                    rows = c.execute(sql, params).fetchall()
-                except Exception:
-                    continue
-                for lid, sid, ltype, rid, ct, content, flag in rows:
-                    stats["scanned"] += 1
-                    if ltype != TEXT_LOCAL_TYPE:
-                        stats["filtered_non_text"] += 1
+                    c = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                    connections.append(c)
+                except sqlite3.Error:
+                    raise
+                for t in tables:
+                    conv = md5_2conv.get(t[4:])
+                    if not conv:
                         continue
-                    text = decode_content(content, flag)
-                    if not text:
-                        stats["filtered_empty"] += 1
-                        continue
-                    if len(text) > MAX_TEXT_LEN:
-                        stats["filtered_too_long"] += 1
-                        continue
-                    sender = rid2wx.get(rid, "unknown")
-                    m = SENDER_PREFIX.match(text)
-                    if m:
-                        sender, text = m.group(1), m.group(2).strip()
-                    # 发送人显示名：原始 ID → 备注/昵称（查不到时保留原样）
-                    sender = names.get(sender, sender)
-                    if not text:
-                        stats["filtered_empty"] += 1
-                        continue
-                    stats["candidates"] += 1
-                    yield {
-                        "source_platform": "wechat",
-                        "conversation_id": conv,
-                        "conversation_name": names.get(conv, conv),
-                        "sender_name": sender,
-                        "text": text,
-                        "sent_at": datetime.fromtimestamp(ct, BJ).isoformat(),
-                        "source_message_id": f"moect:{db_path.name}:{t}:{lid}:{sid}",
-                        # 游标定位用的内部字段，推送前由 _strip_internal 剔除
-                        "_ct": ct, "_lid": lid, "_table": t,
-                    }
-            c.close()
+                    if selected and conv.endswith('@chatroom'):
+                        allowed, excluded, ids, excluded_ids, bound_names = selected
+                        display = names.get(conv, conv)
+                        if (conv in excluded_ids or display in excluded or
+                            (conv not in ids and (display not in allowed or display in bound_names))):
+                            continue
+                    if not conv.endswith("@chatroom"):
+                        if names.get(conv, conv) not in private_allow:
+                            stats["filtered_private"] += 1
+                            continue
+                    sql = (f'SELECT local_id, server_id, local_type, real_sender_id, '
+                           f'create_time, message_content, WCDB_CT_message_content '
+                           f'FROM "{t}" WHERE create_time >= ?')
+                    params = [watermark]
+                    if after:
+                        sql += ' AND (create_time > ? OR (create_time = ? AND local_id >= ?))'
+                        params.extend([after["ct"], after["ct"], after["lid"]])
+                    sql += ' ORDER BY create_time, local_id'
+                    try:
+                        cur = c.execute(sql, params)
+                    except sqlite3.Error:
+                        raise
+                    def table_rows(cur=cur, t=t, db_path=db_path, conv=conv, rid2wx=rid2wx):
+                        for lid, sid, ltype, rid, ct, content, flag in cur:
+                            key = (ct, lid, t, db_path.name)
+                            if after and key <= (after["ct"], after["lid"], after["table"], after.get("db", "")):
+                                continue
+                            stats["scanned"] += 1
+                            if ltype != TEXT_LOCAL_TYPE:
+                                stats["filtered_non_text"] += 1
+                                continue
+                            text = decode_content(content, flag)
+                            if not text:
+                                stats["filtered_empty"] += 1
+                                continue
+                            if len(text) > MAX_TEXT_LEN:
+                                stats["filtered_too_long"] += 1
+                                continue
+                            sender = rid2wx.get(rid, "unknown")
+                            match = SENDER_PREFIX.match(text)
+                            if match:
+                                sender, text = match.group(1), match.group(2).strip()
+                            if not text:
+                                stats["filtered_empty"] += 1
+                                continue
+                            stats["candidates"] += 1
+                            msg = {"source_platform": "wechat", "conversation_id": conv,
+                                   "conversation_name": names.get(conv, conv),
+                                   "sender_name": names.get(sender, sender), "text": text,
+                                   "sent_at": datetime.fromtimestamp(ct, BJ).isoformat(),
+                                   "source_message_id": f"moect:{db_path.name}:{t}:{lid}:{sid}",
+                                   "_ct": ct, "_lid": lid, "_table": t, "_db": db_path.name}
+                            yield key, msg
+                    streams.append(table_rows())
+            for _, msg in heapq.merge(*streams, key=lambda item: item[0]):
+                yield msg
+        finally:
+            for c in connections:
+                c.close()
 
     return gen(), names, stats
 
@@ -822,7 +860,7 @@ def read_new_messages_paged(snap: Path, cursor: dict | None, limit: int,
     else:
         new_cursor = {"state": "after", "watermark": wm,
                       "ct": last["_ct"], "lid": last["_lid"],
-                      "table": last["_table"], "max_ct": max_ct}
+                      "table": last["_table"], "db": last.get("_db", ""), "max_ct": max_ct}
         page = [_strip_internal(m) for m in out]
     if want_stats:
         return page, new_cursor, stats
@@ -855,10 +893,11 @@ def cursor_after_ack(page: list, acked: int) -> dict:
         return {"state": "retry"}
     last = page[min(acked, len(page)) - 1]
     ct, lid, table = last.get("_ct"), last.get("_lid"), last.get("_table")
+    db_name = last.get("_db", "")
     if lid is None or table is None:
         parsed = parse_source_message_id(last.get("source_message_id"))
         if parsed:
-            _db, table, lid, _sid = parsed
+            db_name, table, lid, _sid = parsed
         lid = lid if lid is not None else -1
         table = table or ""
     if ct is None:
@@ -867,7 +906,7 @@ def cursor_after_ack(page: list, acked: int) -> dict:
     if ct is None:
         # 完全无法定位：退化为「不推进」，靠水位重扫兜底，绝不跳条
         return {"state": "retry"}
-    return {"state": "after", "ct": int(ct), "lid": int(lid), "table": table}
+    return {"state": "after", "ct": int(ct), "lid": int(lid), "table": table, "db": db_name}
 
 
 def iso_to_ts(s: str | None) -> int | None:
@@ -928,12 +967,27 @@ def run_once(args, state: dict) -> dict:
     if not snaps:
         log("ERROR: 没有可用的解密快照")
         return state
+    generation = None
+    try:
+        marker = json.loads((ROOT / "runtime" / "snapshot_generation.json").read_text(encoding="utf-8"))
+        marker_path = Path(marker["snapshot"]).resolve()
+        eligible = (any(p.resolve() == marker_path for p in snaps)
+                    and snapshot_complete(marker_path)
+                    and (marker_path == CURRENT.resolve() or SAFE_CLEAN_PREFIX in marker_path.parents))
+        if eligible or state.get("in_progress_generation") == marker.get("generation"):
+            generation = marker
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     # 把项目内快照合并进固定目录（同盘覆盖移动，不删文件、磁盘恒定一份）
     try:
         snap = consolidate(snaps)
     except Exception as e:
         log(f"快照合并跳过: {type(e).__name__}: {e}")
         snap = snaps[0]
+        generation = None
+
+    if generation:
+        state["in_progress_generation"] = generation["generation"]
 
     watermark = int(state.get("watermark") or 0)
     if not watermark:
@@ -1002,6 +1056,9 @@ def run_once(args, state: dict) -> dict:
         state["watermark"] = watermark
         state["cursor"] = cursor
     state["last_snapshot"] = snap.name
+    if generation and drained and total_failed == 0:
+        state["processed_generation"] = generation["generation"]
+        state["snapshot_completed_at"] = generation["completed_at"]
     state["last_run"] = datetime.now(BJ).isoformat()
     state["total_pushed"] = state.get("total_pushed", 0) + total_sent
     state["last_stats"] = dict(agg, pushed=total_sent, inserted=total_inserted,
@@ -1085,6 +1142,7 @@ def check_env() -> int:
 
 
 def main() -> int:
+    global SELECTED_GROUPS_ONLY
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--loop", action="store_true")
@@ -1093,12 +1151,14 @@ def main() -> int:
     ap.add_argument("--since-hours", type=float, default=24.0)
     ap.add_argument("--limit", type=int, default=3000, help="单轮最多推送条数")
     ap.add_argument("--no-refresh", action="store_true", help="不触发 Moect 刷新，仅读现有快照")
+    ap.add_argument("--selected-groups", action="store_true", help="只采集选定监测群")
     ap.add_argument("--keep-snapshots", action="store_true", help="不清理旧快照")
     ap.add_argument("--include-private", action="store_true",
                     help="按 personal.json contacts 分层采集私聊："
                          "work/watch 级联系人放行，excluded 与未勾选不采。"
                          "不勾任何联系人时等价于只采群聊")
     args = ap.parse_args()
+    SELECTED_GROUPS_ONLY = args.selected_groups
     if args.check:
         return check_env()
     if not acquire_instance_lock():

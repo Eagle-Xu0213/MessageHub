@@ -195,7 +195,8 @@ def _current_levels() -> Dict[str, Dict[str, List[str]]]:
 
 
 def _save_config(groups: Dict[str, List[str]],
-                 contacts: Dict[str, List[str]]) -> None:
+                 contacts: Dict[str, List[str]],
+                 group_ids: Optional[Dict[str, Dict[str, str]]] = None) -> None:
     """把分级写回 config/personal.json（只动 groups 与 contacts 段）。
 
     其他段（identity/aliases/brief）原样保留；写前先备份一份 .bak。
@@ -229,6 +230,11 @@ def _save_config(groups: Dict[str, List[str]],
         "watch": _clean(groups.get("watch")),
         "excluded": _clean(groups.get("excluded")),
     }
+    # Save stable IDs only when a display name maps unambiguously to one group.
+    bindings = group_ids if group_ids is not None else (data.get('group_ids') or {})
+    data['group_ids'] = {level: {gid: name for gid, name in (bindings.get(level) if isinstance(bindings.get(level), dict) else {}).items()
+                                       if isinstance(gid, str) and gid.endswith('@chatroom') and name in data['groups'][level]}
+                         for level in ('work', 'watch', 'excluded')}
     data["contacts"] = {
         "work": _clean(contacts.get("work")),
         "watch": _clean(contacts.get("watch")),
@@ -263,12 +269,13 @@ async def scope_conversations():
 class ScopeSave(BaseModel):
     groups: Dict[str, List[str]]
     contacts: Dict[str, List[str]]
+    group_ids: Optional[Dict[str, Dict[str, str]]] = None
 
 
 @router.post("/api/scope/config")
 async def save_scope(payload: ScopeSave):
     """保存分级配置（前端提交勾选结果）。"""
-    _save_config(payload.groups, payload.contacts)
+    _save_config(payload.groups, payload.contacts, payload.group_ids)
     return JSONResponse({
         "status": "ok",
         "levels": _current_levels(),

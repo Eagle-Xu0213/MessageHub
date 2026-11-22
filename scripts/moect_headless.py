@@ -12,8 +12,10 @@ Usage: python moect_headless.py [--once | --loop]
 from __future__ import annotations
 
 import os
+import json
 import sys
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,7 +29,8 @@ ARCHIVES = DATA_DIR / "archives"
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(str(ROOT / ".env"), override=False)
+    if os.environ.get('MESSAGEHUB_DISABLE_DOTENV') != '1':
+        load_dotenv(str(ROOT / ".env"), override=False)
 except ImportError:
     pass
 
@@ -184,8 +187,20 @@ def run_connect() -> bool:
         new_root = svc.config["library"]["root"]
         log(f"新快照: {new_root}")
         # 等待快照写完整（最后一次 db 尺寸稳定）
-        return bool(snapshot_stamp(Path(new_root)) or
-                    snapshot_stamp(current_snapshot()))
+        snapshot = Path(new_root)
+        stamp = snapshot_stamp(snapshot)
+        if not stamp or (snapshot.resolve() == current_snapshot().resolve() and stamp == before):
+            return False
+        # A completed connect and its exact snapshot are handed to the reader.
+        marker = ROOT / "runtime" / "snapshot_generation.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        temp = marker.with_name(marker.name + ".tmp-" + uuid.uuid4().hex)
+        temp.write_text(json.dumps({"generation": uuid.uuid4().hex,
+                                   "snapshot": str(snapshot.resolve()),
+                                   "completed_at": datetime.now(BJ).isoformat()}),
+                        encoding="utf-8")
+        os.replace(temp, marker)
+        return True
     except Exception as e:
         log(f"connect 异常: {type(e).__name__}: {e}")
         return False

@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 
 from messagehub.app import app, _combined_lifespan
 from messagehub.pipeline import live as live_module
-from messagehub import schedule as schedule_module
+from messagehub import task_runtime as schedule_module
 
 
 def test_app_has_single_combined_lifespan():

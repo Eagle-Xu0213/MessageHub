@@ -25,6 +25,12 @@
     "watch": ["示例混杂群"],
     "excluded": ["示例排除群"]
   },
+  "group_ids": {
+    "_说明": "由 /select 页面保存时自动写入（群 ID → 显示名），手工编辑可留空对象",
+    "work": {},
+    "watch": {},
+    "excluded": {}
+  },
   "contacts": {
     "work": ["示例工作联系人"],
     "watch": ["示例混合联系人"],

@@ -256,3 +256,67 @@ def test_stats_separate_filters(ml, tmp_path):
     assert stats["filtered_non_text"] == 2
     assert stats["filtered_too_long"] == 1
     assert stats["candidates"] == 2
+
+
+def test_pages_merge_overlapping_group_timestamps(ml, tmp_path):
+    snap = build_snapshot(tmp_path, [
+        (CHAT, 1, 101, 1, 1000, '甲一'),
+        (CHAT, 2, 102, 1, 1002, '甲二'),
+        (CHAT2, 1, 201, 1, 1001, '乙一'),
+        (CHAT2, 2, 202, 1, 1003, '乙二'),
+    ])
+    cursor = {'state': 'init', 'watermark': 900}
+    messages = []
+    while True:
+        page, cursor = ml.read_new_messages_paged(snap, cursor, 1)
+        if not page:
+            break
+        messages.extend(item['text'] for item in page)
+    assert messages == ['甲一', '乙一', '甲二', '乙二']
+
+
+def test_resume_with_same_table_key_across_databases(ml, tmp_path):
+    snap = build_snapshot(tmp_path, [(CHAT, 1, 101, 1, 1000, '甲')])
+    import shutil
+    shutil.copy2(snap / 'message' / 'message_0.db', snap / 'message' / 'message_1.db')
+    cursor = {'state': 'init', 'watermark': 900}
+    first, cursor = ml.read_new_messages_paged(snap, cursor, 1)
+    second, cursor = ml.read_new_messages_paged(snap, cursor, 1)
+    third, _ = ml.read_new_messages_paged(snap, cursor, 1)
+    assert len(first) == len(second) == 1
+    assert first[0]['source_message_id'] != second[0]['source_message_id']
+    assert third == []
+
+
+def test_selected_groups_filter_excludes_other_groups(ml, tmp_path, monkeypatch):
+    snap = build_snapshot(tmp_path, [
+        (CHAT, 1, 1, 1, 1000, '保留'),
+        (CHAT2, 1, 2, 1, 1001, '跳过'),
+    ])
+    monkeypatch.setattr(ml, 'SELECTED_GROUPS_ONLY', True)
+    monkeypatch.setattr(ml, '_selected_group_filter', lambda: ({'测试群甲'}, set(), set(), set(), set()))
+    messages, _ = ml.read_new_messages(snap, 900, 10)
+    assert [item['text'] for item in messages] == ['保留']
+
+
+def test_generation_marked_only_after_all_ingests_succeed(ml, tmp_path, monkeypatch):
+    snap = build_snapshot(tmp_path, [(CHAT, 1, 1, 1, 1000, '测试')])
+    runtime = tmp_path / 'runtime'
+    runtime.mkdir()
+    (runtime / 'snapshot_generation.json').write_text(json.dumps({
+        'generation': 'generation-one', 'snapshot': str(snap.resolve()),
+        'completed_at': '2026-11-21T10:00:00+08:00'}), encoding='utf-8')
+    monkeypatch.setattr(ml, 'ROOT', tmp_path)
+    monkeypatch.setattr(ml, 'SAFE_CLEAN_PREFIX', tmp_path)
+    monkeypatch.setattr(ml, 'list_snapshots', lambda: [snap])
+    monkeypatch.setattr(ml, 'snapshot_complete', lambda p: True)
+    monkeypatch.setattr(ml, 'consolidate', lambda paths: snap)
+    monkeypatch.setattr(ml, 'save_state', lambda state: None)
+    monkeypatch.setattr(ml, 'post_batches', lambda page: (0, 0, len(page)))
+    initial = {'watermark': 900}
+    failed = ml.run_once(_Args(limit=10), initial)
+    assert 'processed_generation' not in failed
+    monkeypatch.setattr(ml, 'post_batches', lambda page: (len(page), len(page), 0))
+    completed = ml.run_once(_Args(limit=10), failed)
+    assert completed['processed_generation'] == 'generation-one'
+    assert completed['last_stats']['drained'] is True

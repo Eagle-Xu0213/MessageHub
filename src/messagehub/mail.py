@@ -78,6 +78,8 @@ def public_settings() -> dict:
         **{key: cfg.get(key, "") for key in ("host", "port", "user", "to")},
         "enabled": bool(cfg.get("enabled")),
         "has_password": bool(cfg.get("pass")),
+        "urgent_enabled": cfg.get("urgent_enabled", True),
+        "digest_frequency": cfg.get("digest_frequency", "hourly"),
     }
 
 
@@ -93,8 +95,12 @@ def save_settings(data: dict) -> None:
     if cfg["port"] and (not cfg["port"].isdigit() or not 1 <= int(cfg["port"]) <= 65535):
         raise ValueError("端口须为 1 至 65535。")
     with _settings_lock:
+        old = _settings()
+        cfg["urgent_enabled"] = data.get("urgent_enabled", old.get("urgent_enabled", True))
+        cfg["digest_frequency"] = data.get("digest_frequency", old.get("digest_frequency", "hourly"))
+        if type(cfg["urgent_enabled"]) is not bool or cfg["digest_frequency"] not in ("off", "hourly"):
+            raise ValueError("请选择有效的邮件通知选项。")
         if not cfg["pass"]:
-            old = _settings()
             if cfg["host"] == old.get("host") and cfg["user"] == old.get("user"):
                 cfg["pass"] = old.get("pass", "")
         if cfg["enabled"] and not _ready(cfg):
@@ -118,7 +124,14 @@ def email_status() -> str:
     return "ready" if _ready(cfg) else "incomplete"
 
 
-def _smtp_config() -> Optional[Dict[str, str]]:
+def task_email_preferences() -> tuple[bool, bool]:
+    cfg = _smtp_config()
+    if not cfg:
+        return False, False
+    return cfg.get("urgent_enabled", True), cfg.get("digest_frequency", "hourly") == "hourly"
+
+
+def _smtp_config() -> Optional[Dict[str, Any]]:
     cfg = _settings()
     return cfg if cfg.get("enabled") and _ready(cfg) else None
 
@@ -310,6 +323,8 @@ def _send_html(subject: str, html_body: str) -> Dict[str, Any]:
 
 
 def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not task_email_preferences()[1]:
+        return {"sent": False, "detail": "待办汇总邮件已关闭"}
     st = payload.get("stats", {})
     if not st.get("open") and not st.get("resolved") and not st.get("review"):
         return {"sent": False, "detail": "空整理，静默"}
@@ -321,6 +336,8 @@ def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def send_urgent_email(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not task_email_preferences()[0]:
+        return {"sent": False, "detail": "紧急邮件已关闭"}
     ev = payload.get("event", {})
     group = ev.get("conversation_name") or ""
     subject = f"[MessageHub] ⚡加急 · {group} · {(ev.get('text') or '')[:24]}"

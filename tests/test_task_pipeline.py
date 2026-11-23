@@ -478,3 +478,55 @@ def test_email_settings_api_keeps_authorization_code_private(tmp_path, monkeypat
     data.update(enabled=False, **{"pass": ""})
     assert client.put(url, json=data, headers=headers).json()["has_password"]
     assert mail.email_status() == "disabled"
+
+
+def test_workbench_undo_restores_exact_status_and_rejects_stale_change(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from messagehub.app import app
+    from messagehub import database
+
+    monkeypatch.setattr(database, 'DB_PATH', tmp_path / 'tasks.db')
+    database.init_db()
+    with database.get_db() as conn:
+        init_store(conn)
+    client = TestClient(app)
+    item_id = client.post('/api/workbench/items', json={'title': 'fixture'}).json()['id']
+    url = f'/api/workbench/items/{item_id}'
+    for before, after in [('review', 'ignored'), ('in_progress', 'completed')]:
+        version = client.patch(url, json={'status': before}).json()['updated_at']
+        changed = client.patch(url, json={'status': after, 'expected_updated_at': version})
+        assert changed.status_code == 200
+        undo = {'status': before, 'expected_updated_at': changed.json()['updated_at']}
+        assert client.patch(url, json=undo).status_code == 200
+        assert client.get('/api/workbench/items').json()['items'][0]['status'] == before
+        client.patch(url, json={'title': 'edited elsewhere'})
+        assert client.patch(url, json=undo).status_code == 409
+        entry = client.get('/api/workbench/items').json()['items'][0]
+        assert entry['status'] == before and entry['title'] == 'edited elsewhere'
+
+
+def test_task_email_preferences_honor_legacy_and_independent_switches(tmp_path, monkeypatch):
+    import json
+    from messagehub import mail
+
+    path = tmp_path / 'email_settings.json'
+    monkeypatch.setattr(mail, '_settings_path', lambda: path)
+    config = {'enabled': True, 'host': 'smtp.example.invalid', 'port': '465',
+              'user': 'sender@example.invalid', 'pass': 'fixture', 'to': 'receiver@example.invalid'}
+    path.write_text(json.dumps(config), encoding='utf-8')
+    sent = []
+    monkeypatch.setattr(mail, '_send_html', lambda subject, body: sent.append(subject) or {'sent': True})
+    urgent = {'event': {'text': 'fixture'}}
+    summary = {'kind': 'hourly', 'stats': {'open': 1}}
+
+    assert mail.task_email_preferences() == (True, True)
+    for enabled, urgent_enabled, frequency in [
+        (True, True, 'off'), (True, False, 'hourly'), (True, True, 'hourly'),
+        (True, False, 'off'), (False, True, 'hourly'),
+    ]:
+        mail.save_settings(dict(config, enabled=enabled, urgent_enabled=urgent_enabled,
+                                digest_frequency=frequency))
+        sent.clear()
+        assert mail.send_urgent_email(urgent)['sent'] == (enabled and urgent_enabled)
+        assert mail.send_digest_email(summary)['sent'] == (enabled and frequency == 'hourly')
+        assert len(sent) == sum(mail.task_email_preferences())

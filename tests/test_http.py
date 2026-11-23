@@ -155,3 +155,72 @@ def test_update_requires_local_origin(client, monkeypatch):
     assert client.post('/api/update', headers={'Origin':'http://127.0.0.1:8000','Sec-Fetch-Site':'same-origin'}).status_code == 200
     assert called == [True]
     assert '一键更新' in client.get('/').text
+
+
+def test_onboarding_resumes_after_saving_and_requires_a_new_snapshot(tmp_path, monkeypatch):
+    import importlib
+    import json
+    from datetime import datetime, timedelta
+    from fastapi.testclient import TestClient
+    from messagehub import personal
+    from messagehub.config import CN_TZ
+
+    app_module = importlib.import_module('messagehub.app')
+    personal_path = tmp_path / 'personal.json'
+    state_path = tmp_path / 'runtime' / 'moect_live_state.json'
+    state_path.parent.mkdir()
+    with monkeypatch.context() as isolated:
+        isolated.setenv('MESSAGEHUB_PERSONAL_CONFIG', str(personal_path))
+        isolated.setattr(personal, 'DEFAULT_CONFIG_PATH', tmp_path / 'empty-default.json')
+        isolated.setattr(app_module, 'BASE_DIR', tmp_path)
+        personal.reload()
+        try:
+            client = TestClient(app_module.app, base_url='http://127.0.0.1:8000')
+            capture = '/api/dashboard/capture'
+            identity = '/api/settings/identity'
+            origin = {'Origin': 'http://127.0.0.1:8000'}
+            assert client.get(capture).json()['phase'] == 'unselected'
+            assert client.get(capture).json()['identity_configured'] is False
+            assert client.put(identity, json={}, headers=origin).status_code == 400
+            assert client.put(identity, json={'sender_names': [' Fixture ']}, headers=origin).json() == {
+                'nicknames': [], 'sender_names': ['Fixture'],
+            }
+            assert client.get(capture).json()['identity_configured'] is True
+            old = datetime.now(CN_TZ) - timedelta(minutes=1)
+
+            def write_state(stamp, failed=0):
+                state_path.write_text(json.dumps({
+                    'processed_generation': 'fixture',
+                    'snapshot_completed_at': stamp.isoformat(),
+                    'last_stats': {'drained': not failed, 'failed': failed},
+                }), encoding='utf-8')
+
+            write_state(old)
+            scope = {'groups': {'watch': ['Fixture Room']}, 'contacts': {}}
+            assert client.post('/api/scope/config', json=scope).status_code == 200
+            personal.reload()
+            assert client.get(identity).json()['sender_names'] == ['Fixture']
+            attempt_path = state_path.with_name('moect_snapshot_attempt.json')
+            attempt_path.write_text(json.dumps({
+                'ok': False, 'finished_at': datetime.now(CN_TZ).isoformat(),
+            }), encoding='utf-8')
+            assert client.get(capture).json()['phase'] == 'failed'
+            attempt_path.write_text(json.dumps({'ok': True}), encoding='utf-8')
+            waiting = client.get(capture).json()
+            assert waiting['phase'] == 'waiting' and waiting['last_sync'] == old.isoformat()
+            write_state(datetime.now(CN_TZ))
+            assert client.get(capture).json()['phase'] == 'normal'
+            assert client.post('/api/scope/config', json=scope).status_code == 200
+            assert client.get(capture).json()['phase'] == 'normal'
+            write_state(old, failed=1)
+            assert client.get(capture).json()['phase'] == 'failed'
+            state_path.write_text('{', encoding='utf-8')
+            assert client.get(capture).json()['phase'] == 'unavailable'
+            legacy = json.loads(personal_path.read_text(encoding='utf-8'))
+            del legacy['scope_updated_at']
+            personal.write_local_config(legacy)
+            write_state(old - timedelta(minutes=15))
+            assert client.get(capture).json()['phase'] == 'delayed'
+        finally:
+            isolated.undo()
+            personal.reload()

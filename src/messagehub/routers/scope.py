@@ -202,17 +202,14 @@ def _save_config(groups: Dict[str, List[str]],
     其他段（identity/aliases/brief）原样保留；写前先备份一份 .bak。
     """
     path = personal.active_config_path()
+    try:
+        data = personal.read_local_config()
+    except (OSError, ValueError):
+        raise HTTPException(500, "无法读取个人配置，请检查文件格式和权限") from None
+    previous = {key: data.get(key) for key in ("groups", "contacts", "group_ids")}
     if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"{path} 不是有效 JSON，拒绝覆盖。请先手工修复该文件。")
-        bak = path.with_suffix(".json.bak")
-        bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    else:
-        data = {}
+        path.with_suffix(".json.bak").write_text(
+            path.read_text(encoding="utf-8"), encoding="utf-8")
 
     def _clean(lst: Any) -> List[str]:
         if not isinstance(lst, list):
@@ -242,10 +239,9 @@ def _save_config(groups: Dict[str, List[str]],
     }
     data.setdefault("identity", {})
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8")
-    personal.reload()
+    if any(data[key] != value for key, value in previous.items()):
+        data["scope_updated_at"] = datetime.now(CN_TZ).isoformat()
+    personal.write_local_config(data)
 
 
 @router.get("/select", response_class=HTMLResponse)
@@ -263,6 +259,7 @@ async def scope_conversations():
         "conversations": items,
         "levels": _current_levels(),
         "snapshot_available": _find_snapshot() is not None,
+        "group_ids": personal.group_bindings(),
     })
 
 

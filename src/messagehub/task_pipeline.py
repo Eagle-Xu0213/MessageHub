@@ -173,7 +173,7 @@ def classify(message: dict[str, Any]) -> dict[str, Any] | None:
         return {'status': 'pending' if action else 'review', 'category': category,
                 'deadline': deadline_of(text, message.get('sent_at') or ''),
                 'reason': '工作联系人发来行动事项' if action else '工作联系人消息，行动不明确'}
-    names = personal.MY_NICKNAMES | ({personal.MY_REALNAME} if personal.MY_REALNAME else set())
+    names = (personal.MY_NICKNAMES or personal.MY_SENDER_NAMES) | ({personal.MY_REALNAME} if personal.MY_REALNAME else set())
     if personal.MY_SHORTNAME:
         names.add(personal.MY_SHORTNAME)
     direct = any(re.search(r"(?<![\u4e00-\u9fff])(?:@[^\s@，,。:：]{0,20}?)?" + re.escape(n) + r"(?=[\s，,。:：！!？?]|你|请|麻烦|帮|负责|$)", text) for n in names)
@@ -316,7 +316,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
             candidate = classify(msg)
             contextual_title = None
             bare_mention = bool(_BARE_MENTION.fullmatch((msg['text'] or '').strip()))
-            names = personal.MY_NICKNAMES | ({personal.MY_REALNAME} if personal.MY_REALNAME else set()) | ({personal.MY_SHORTNAME} if personal.MY_SHORTNAME else set())
+            names = (personal.MY_NICKNAMES or personal.MY_SENDER_NAMES) | ({personal.MY_REALNAME} if personal.MY_REALNAME else set()) | ({personal.MY_SHORTNAME} if personal.MY_SHORTNAME else set())
             mine = bare_mention and any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', msg['text'].strip()) for name in names)
             if mine:
                 previous = conn.execute(

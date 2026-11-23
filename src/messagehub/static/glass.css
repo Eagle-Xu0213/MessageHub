@@ -347,3 +347,10 @@ pre { background: var(--surface-2); border: 1px solid var(--line); border-radius
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+
+#setup-guide { margin-bottom: 16px; }
+#identity-form { max-width: 420px; }
+#identity-form label { display: block; margin-bottom: 12px; }
+#task-feedback { margin-bottom: 12px; }
+#task-feedback[hidden], #setup-guide[hidden], #identity-form[hidden] { display: none; }

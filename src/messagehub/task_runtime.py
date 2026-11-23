@@ -58,16 +58,16 @@ class TaskScheduler:
                     # Drain queued message batches before summaries or alerts.
                     if batch['processed'] >= 200:
                         continue
-                    email_ready = mail.email_status() == 'ready'
+                    urgent_email, digest_email = mail.task_email_preferences()
                     task_pipeline.send_due_alerts(conn, None, desktop_notify.notify_urgent)
-                    if email_ready:
+                    if urgent_email:
                         task_pipeline.send_due_alerts(
                             conn, lambda event: mail.send_urgent_email({'event': event}),
                             None,
                         )
                     if time.monotonic() >= next_hour:
                         next_hour = time.monotonic() + self.hourly_seconds
-                        if email_ready:
+                        if digest_email:
                             task_pipeline.send_current_digest(conn, mail.send_digest_email)
                     ready = self.snapshot_ready()
                     self.state['capture'] = '补扫完成' if ready else '等待微信新快照'

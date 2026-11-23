@@ -46,16 +46,6 @@
   button:disabled { opacity: .55; cursor: not-allowed; }
   .toolbar .spacer { flex: 1; }
   .hint { font-size: 12.5px; color: #7a8698; }
-  .levelbar {
-    display: flex; gap: 8px; font-size: 12.5px; margin-bottom: 12px; flex-wrap: wrap;
-  }
-  .levelbar .chip {
-    border-radius: 20px; padding: 3px 12px; border: 1px solid #e3e8ef;
-    background: #f7f9fc; color: #4a5768; cursor: pointer; user-select: none;
-  }
-  .chip.on-work { background: #e8f4e9; border-color: #7cb87e; color: #2e7d32; font-weight: 600; }
-  .chip.on-watch { background: #fff7e0; border-color: #e6c26a; color: #9a6b00; font-weight: 600; }
-  .chip.on-excluded { background: #f1f3f5; border-color: #c3ccd6; color: #5c6774; font-weight: 600; }
   #list { max-height: 560px; overflow-y: auto; border: 1px solid #e8edf4; border-radius: 9px; }
   .conv {
     display: flex; align-items: center; gap: 10px;
@@ -73,14 +63,6 @@
     background: #eef3fb; color: #34527d; margin-right: 4px; flex: none;
   }
   .kbadge.contact { background: #f3eefb; color: #6b3fa0; }
-  .seg { display: flex; gap: 4px; flex: none; }
-  .seg button {
-    padding: 4px 11px; font-size: 12px; border-radius: 6px; border: 1px solid #d5dde8;
-    background: #fff; color: #5c6774;
-  }
-  .seg button.on-work { background: #2e7d32; border-color: #2e7d32; color: #fff; }
-  .seg button.on-watch { background: #b8860b; border-color: #b8860b; color: #fff; }
-  .seg button.on-excluded { background: #8a93a1; border-color: #8a93a1; color: #fff; }
   .savebar {
     display: flex; align-items: center; gap: 14px; margin-top: 14px;
     position: sticky; bottom: 0; background: #fff; padding: 10px 4px;
@@ -93,22 +75,6 @@
     background: #fffbe8; border: 1px solid #f5e2a8; border-radius: 9px;
     padding: 13px 16px; font-size: 13px; color: #6b5518; margin-bottom: 18px;
   }
-  .note b { color: #8a6110; }
-  .toast {
-    position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
-    background: #2e7d32; color: #fff; padding: 10px 22px; border-radius: 8px;
-    font-size: 14px; display: none; z-index: 99; box-shadow: 0 4px 14px rgba(0,0,0,.18);
-  }
-  .toast.err { background: #c62828; }
-  .spin {
-    display: inline-block; width: 13px; height: 13px; border: 2px solid #fff;
-    border-top-color: transparent; border-radius: 50%; animation: r 0.8s linear infinite;
-    vertical-align: -2px; margin-right: 6px;
-  }
-  @keyframes r { to { transform: rotate(360deg); } }
-  .legend { display: flex; gap: 16px; font-size: 12.5px; color: #6b7785; flex-wrap: wrap; margin-bottom: 10px; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
-  .lv-work { background: #2e7d32; } .lv-watch { background: #b8860b; } .lv-excluded { background: #8a93a1; }
 </style>
 <link rel="stylesheet" href="/static/glass.css">
 <script src="/static/ambient.js"></script>
@@ -122,263 +88,178 @@
     <a href="/select" class="cur">🔍 检测范围</a>
   </div>
 
-  <h1>🔍 检测范围管理</h1>
-  <div class="sub">勾选哪些群和联系人要被检测；没勾的一律不处理。分级决定检测的严格程度。</div>
+  <h1>关注会话</h1>
+  <div class="sub">选择想关注的群或联系人。取消关注后，已保存的历史仍可查看。</div>
 
-  <div class="note" id="snapWarn" style="display:none">
-    <b>未找到 Moect 解密快照。</b>清单为空。先按 README「Moect 集成」章节安装并跑通一次 Moect，再刷新本页。
-  </div>
-
-  <div class="card">
-    <h2>分级说明</h2>
-    <div class="legend">
-      <span><i class="lv-work"></i><b>工作</b>：从新增消息中筛选工作事项和通知</span>
-      <span><i class="lv-watch"></i><b>混合</b>：同样筛选新增工作信息，过滤闲聊</span>
-      <span><i class="lv-excluded"></i><b>不检测</b>：纯生活，完全不处理</span>
-    </div>
-    <div class="hint">请手动选择会话层级。工作和混合会话都只分析新增消息中的工作信息；不检测的会话不会进入事项识别。</div>
+  <div class="note" id="snapWarn" hidden>
+    微信会话清单还没同步。请保持微信登录，完成首次采集后刷新本页。
   </div>
 
   <div class="card">
     <h2>会话清单 <span class="hint" id="countInfo"></span></h2>
     <div class="toolbar">
-      <input type="text" id="search" placeholder="搜索群名 / 联系人…">
-      <select id="kindFilter">
+      <input type="text" id="search" aria-label="搜索会话" placeholder="搜索群名 / 联系人…">
+      <select id="kindFilter" aria-label="会话类型">
         <option value="all">全部类型</option>
         <option value="group">仅群聊</option>
         <option value="contact">仅联系人</option>
       </select>
       <div class="spacer"></div>
     </div>
-    <div class="levelbar" id="filterChips">
-      <span class="chip" data-lv="work">工作 <b id="cw">0</b></span>
-      <span class="chip" data-lv="watch">混合 <b id="cwatch">0</b></span>
-      <span class="chip" data-lv="excluded">不检测 <b id="cx">0</b></span>
-      <span class="chip" data-lv="unset">未分类 <b id="cu">0</b></span>
-    </div>
+    <details id="advanced">
+      <summary>高级设置</summary>
+      <p class="hint">工作和混合会话都会筛选工作消息。混合适合包含闲聊的会话。</p>
+    </details>
     <div id="list"><div class="empty">加载中…</div></div>
     <div class="savebar">
-      <span class="summary">已分级：<b id="sWork">0</b> 工作 · <b id="sWatch">0</b> 混合 · <b id="sExcl">0</b> 不检测</span>
+      <span class="summary">已关注 <b id="follow-count">0</b> 个会话</span>
       <div class="spacer" style="flex:1"></div>
-      <span class="hint" id="dirtyHint"></span>
-      <button class="primary" id="saveBtn">保存并生效</button>
+      <span class="hint" id="dirtyHint" role="status"></span>
+      <button class="primary" id="saveBtn" disabled>保存关注范围</button>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script>
-// ---------------- 数据 ----------------
-let ALL = [];            // [{id,name,kind,msg_count,last_at,active_recent,level,reason,source}]
-let LEVELS = null;       // 当前 personal.json 分级
-let dirty = false;
-let aiBusy = false;
+const $ = selector => document.querySelector(selector);
+const segments = {group: 'groups', contact: 'contacts'};
+const levels = ['work', 'watch', 'excluded'];
+const labels = {work: '工作', watch: '混合', excluded: '未关注'};
+const fromSetup = new URLSearchParams(location.search).has('setup');
+const followed = level => level === 'work' || level === 'watch';
+let conversations = [];
+let bindings = {};
+let saving = false;
 
-const LV_KEY = { group: "groups", contact: "contacts" };
-const $ = (s) => document.querySelector(s);
-
-function toast(msg, isErr) {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.className = "toast" + (isErr ? " err" : "");
-  t.style.display = "block";
-  clearTimeout(t._tm);
-  t._tm = setTimeout(() => t.style.display = "none", 2800);
-}
-
-function markDirty() {
-  dirty = true;
-  $("#dirtyHint").textContent = "有未保存的修改";
-  refreshCounters();
-}
-
-// ---------------- 加载 ----------------
-async function load() {
-  try {
-    const r = await fetch("/api/scope/conversations");
-    const d = await r.json();
-    if (!d.snapshot_available) { $("#snapWarn").style.display = "block"; }
-    LEVELS = d.levels;
-    ALL = d.conversations.map(c => ({
-      ...c,
-      level: pickLevel(c.name, c.kind),
-      reason: "", source: "",
-    }));
-    render();
-    refreshCounters();
-  } catch (e) {
-    $("#list").innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
-  }
-}
-
-function pickLevel(name, kind) {
-  const seg = LEVELS[LV_KEY[kind]];
-  for (const lv of ["work", "watch", "excluded"]) {
-    if (seg[lv].includes(name)) return lv;
-  }
-  return null;
-}
-
-// ---------------- 渲染 ----------------
-function currentFilters() {
-  return {
-    q: $("#search").value.trim().toLowerCase(),
-    kind: $("#kindFilter").value,
-  };
-}
-
-function visibleItems() {
-  const { q, kind } = currentFilters();
-  return ALL.filter(c =>
-    (kind === "all" || c.kind === kind) &&
-    (!q || c.name.toLowerCase().includes(q)));
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g,
+    char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[char]);
 }
 
 function render() {
-  const items = visibleItems();
-  if (!ALL.length) {
-    $("#list").innerHTML = `<div class="empty">清单为空——没有找到快照或本库没有任何会话</div>`;
-    return;
-  }
-  if (!items.length) {
-    $("#list").innerHTML = `<div class="empty">没有匹配的会话</div>`;
-    return;
-  }
-  $("#list").innerHTML = items.map(c => {
-    const meta = [
-      c.kind === "group" ? "群聊" : "联系人",
-      c.msg_count ? `${c.msg_count} 条消息` : "本库无消息",
-      c.active_recent ? "近期活跃" : "",
-    ].filter(Boolean).join(" · ");
-    const aiLine = c.reason
-      ? `<div class="aireason${c.source === "none" ? " off" : ""}">✦ ${esc(c.reason)}${c.source === "llm" ? "（AI）" : c.source === "heuristic" ? "（规则推测）" : ""}</div>`
-      : "";
-    return `<div class="conv" data-id="${esc(c.id)}">
-      <span class="kbadge ${c.kind}">${c.kind === "group" ? "群" : "人"}</span>
-      <div class="nm"><div class="n">${esc(c.name)}</div>
-        <div class="meta">${meta}</div>${aiLine}</div>
-      <div class="seg">
-        <button data-lv="work" class="${c.level === "work" ? "on-work" : ""}" title="工作">工作</button>
-        <button data-lv="watch" class="${c.level === "watch" ? "on-watch" : ""}" title="混合">混合</button>
-        <button data-lv="excluded" class="${c.level === "excluded" ? "on-excluded" : ""}" title="不检测">不检</button>
-      </div>
-    </div>`;
-  }).join("");
-  $("#countInfo").textContent = `（显示 ${items.length} / 共 ${ALL.length}）`;
+  const advanced = $('#advanced').open;
+  const query = $('#search').value.trim().toLowerCase();
+  const kind = $('#kindFilter').value;
+  const visible = conversations.filter(row =>
+    (kind === 'all' || kind === row.kind) && row.name.toLowerCase().includes(query));
+  $('#list').innerHTML = visible.length ? visible.map(row => {
+    const control = advanced
+      ? `<select data-row="${row.index}" aria-label="${escapeHtml(row.name)}分级">${levels.map(level =>
+          `<option value="${level}" ${(row.level || 'excluded') === level ? 'selected' : ''}>${labels[level]}</option>`
+        ).join('')}</select>`
+      : `<label><input type="checkbox" aria-label="关注 ${escapeHtml(row.name)}" data-row="${row.index}" ${followed(row.level) ? 'checked' : ''}> 关注</label>`;
+    return `<div class="conv"><span class="kbadge ${row.kind}">${row.kind === 'group' ? '群' : '人'}</span>
+      <div class="nm"><div class="n">${escapeHtml(row.name)}</div></div>
+      <div>${control}</div></div>`;
+  }).join('') : '<div class="empty">没有可显示的会话</div>';
+  $('#countInfo').textContent = `（${visible.length} / ${conversations.length}）`;
+  refreshSaveState();
 }
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g,
-    m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+function refreshSaveState() {
+  $('#follow-count').textContent = conversations.filter(row => followed(row.level)).length;
+  $('#saveBtn').disabled = saving || !conversations.some(row => row.level !== row.savedLevel);
+  $('#list').querySelectorAll('[data-row]').forEach(input => { input.disabled = saving; });
 }
 
-function refreshCounters() {
-  const n = { work: 0, watch: 0, excluded: 0, unset: 0 };
-  for (const c of ALL) n[c.level || "unset"]++;
-  $("#cw").textContent = n.work;
-  $("#cwatch").textContent = n.watch;
-  $("#cx").textContent = n.excluded;
-  $("#cu").textContent = n.unset;
-  $("#sWork").textContent = n.work;
-  $("#sWatch").textContent = n.watch;
-  $("#sExcl").textContent = n.excluded;
-  for (const chip of document.querySelectorAll("#filterChips .chip")) {
-    const lv = chip.dataset.lv;
-    chip.classList.toggle("on-" + lv, chip._active === true);
-    chip.style.display = n[lv] ? "" : "none";
-  }
-}
-
-// ---------------- 交互 ----------------
-$("#list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".seg button");
-  if (!btn) return;
-  const row = e.target.closest(".conv");
-  const c = ALL.find(x => x.id === row.dataset.id);
-  if (!c) return;
-  const lv = btn.dataset.lv;
-  c.level = (c.level === lv) ? null : lv;   // 再点一次取消
-  if (c.level === null && c.reason) { /* 保留 AI 理由 */ }
-  markDirty();
-  render();
-});
-
-$("#filterChips").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
-  if (!chip) return;
-  const lv = chip.dataset.lv;
-  // 再次点击取消筛选；否则筛选出该级别
-  const active = chip._active === true;
-  document.querySelectorAll("#filterChips .chip").forEach(x => x._active = false);
-  chip._active = !active;
-  const items = visibleItems().filter(c => (chip._active ? c.level === lv : true));
-  $("#list").innerHTML = items.length ? items.map(c => "").join("") || "" : "";
-  // 简化：筛选直接复用 render 的过滤逻辑——把 chip 状态并入
-  renderFiltered(lv, chip._active);
-});
-
-function renderFiltered(lv, active) {
-  // 在 visibleItems 基础上叠加级别筛选
-  const { q, kind } = currentFilters();
-  let items = ALL.filter(c =>
-    (kind === "all" || c.kind === kind) &&
-    (!q || c.name.toLowerCase().includes(q)));
-  if (active) items = items.filter(c => c.level === lv);
-  if (!items.length) {
-    $("#list").innerHTML = `<div class="empty">该分类下没有会话</div>`;
-    return;
-  }
-  $("#list").innerHTML = items.map(c => {
-    const meta = [c.kind === "group" ? "群聊" : "联系人",
-      c.msg_count ? `${c.msg_count} 条消息` : "本库无消息"].filter(Boolean).join(" · ");
-    const aiLine = c.reason ? `<div class="aireason">${esc(c.reason)}</div>` : "";
-    return `<div class="conv" data-id="${esc(c.id)}">
-      <span class="kbadge ${c.kind}">${c.kind === "group" ? "群" : "人"}</span>
-      <div class="nm"><div class="n">${esc(c.name)}</div><div class="meta">${meta}</div>${aiLine}</div>
-      <div class="seg">
-        <button data-lv="work" class="${c.level === "work" ? "on-work" : ""}">工作</button>
-        <button data-lv="watch" class="${c.level === "watch" ? "on-watch" : ""}">混合</button>
-        <button data-lv="excluded" class="${c.level === "excluded" ? "on-excluded" : ""}">不检</button>
-      </div></div>`;
-  }).join("");
-}
-
-$("#search").addEventListener("input", () => { clearChips(); render(); });
-$("#kindFilter").addEventListener("change", () => { clearChips(); render(); });
-
-function clearChips() {
-  document.querySelectorAll("#filterChips .chip").forEach(x => x._active = false);
-}
-
-$("#saveBtn").addEventListener("click", async () => {
-  const payload = { group_ids: { work: {}, watch: {}, excluded: {} }, groups: { work: [], watch: [], excluded: [] },
-                    contacts: { work: [], watch: [], excluded: [] } };
-  for (const c of ALL) {
-    if (!c.level) continue;
-    payload[LV_KEY[c.kind]][c.level].push(c.name);
-    if (c.kind === 'group' && c.id) payload.group_ids[c.level][c.id] = c.name;
-  }
-  const btn = $("#saveBtn");
-  btn.disabled = true; btn.textContent = "保存中…";
+async function load() {
   try {
-    const r = await fetch("/api/scope/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const response = await fetch('/api/scope/conversations', {signal: AbortSignal.timeout(8000)});
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+    $('#snapWarn').hidden = data.snapshot_available;
+    bindings = data.group_ids || {};
+    const rows = [...data.conversations];
+    for (const [kind, segment] of Object.entries(segments)) {
+      const known = new Set(rows.filter(row => row.kind === kind).map(row => row.name));
+      for (const name of new Set(Object.values(data.levels[segment]).flat())) {
+        if (!known.has(name)) rows.push({kind, name});
+      }
+    }
+    conversations = rows.map((row, index) => {
+      const selected = data.levels[segments[row.kind]];
+      const level = levels.find(key => selected[key].includes(row.name)) || null;
+      return {...row, index, level, savedLevel: level};
     });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "保存失败");
-    LEVELS = d.levels;
-    for (const c of ALL) c.level = pickLevel(c.name, c.kind);
-    dirty = false;
-    $("#dirtyHint").textContent = "";
-    toast("已保存，检测范围已生效（采集器下一轮生效）");
-    render(); refreshCounters();
-  } catch (e) {
-    toast(e.message, true);
+    render();
+  } catch {
+    $('#list').textContent = '会话清单加载失败，请刷新重试。';
+  }
+}
+
+$('#list').addEventListener('change', event => {
+  const input = event.target.closest('[data-row]');
+  if (!input || saving) return;
+  const row = conversations[Number(input.dataset.row)];
+  const level = input.type === 'checkbox'
+    ? (input.checked ? (followed(row.savedLevel) ? row.savedLevel : 'watch') : followed(row.savedLevel) ? 'excluded' : row.savedLevel)
+    : input.value;
+  for (const match of conversations) {
+    if (match.kind === row.kind && match.name === row.name) match.level = level;
+  }
+  $('#dirtyHint').textContent = conversations.some(row => row.level !== row.savedLevel) ? '有未保存的修改' : '';
+  render();
+  $('#list').querySelector(`[data-row="${row.index}"]`)?.focus();
+});
+
+$('#advanced').addEventListener('toggle', render);
+$('#search').addEventListener('input', render);
+$('#kindFilter').addEventListener('change', render);
+
+function scopePayload() {
+  const payload = {};
+  for (const segment of Object.values(segments)) {
+    payload[segment] = Object.fromEntries(levels.map(level => [
+      level, [...new Set(conversations.filter(row =>
+        segments[row.kind] === segment && row.level === level).map(row => row.name))],
+    ]));
+  }
+  payload.group_ids = Object.fromEntries(levels.map(level => [level, {}]));
+  const previouslyBound = Object.assign({}, ...levels.map(level => bindings[level] || {}));
+  for (const [id, name] of Object.entries(previouslyBound)) {
+    const level = levels.find(key => payload.groups[key].includes(name));
+    if (level) payload.group_ids[level][id] = name;
+  }
+  const groupsByName = new Map();
+  for (const row of conversations) {
+    if (row.kind !== 'group' || !row.id) continue;
+    const matches = groupsByName.get(row.name) || [];
+    matches.push(row);
+    groupsByName.set(row.name, matches);
+  }
+  const boundNames = new Set(Object.values(previouslyBound));
+  for (const rows of groupsByName.values()) {
+    const [row] = rows;
+    if (rows.length === 1 && row.level && row.level !== row.savedLevel && !boundNames.has(row.name)) {
+      payload.group_ids[row.level][row.id] = row.name;
+    }
+  }
+  return payload;
+}
+
+$('#saveBtn').addEventListener('click', async () => {
+  if (saving) return;
+  saving = true;
+  refreshSaveState();
+  $('#dirtyHint').textContent = '正在保存…';
+  const payload = scopePayload();
+  try {
+    const response = await fetch('/api/scope/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error('保存失败，请重试。');
+    bindings = payload.group_ids;
+    for (const row of conversations) row.savedLevel = row.level;
+    $('#dirtyHint').textContent = '已保存。等待下一轮微信同步。';
+    if (fromSetup) location.assign('/');
+  } catch (error) {
+    $('#dirtyHint').textContent = error.message;
   } finally {
-    btn.disabled = false; btn.textContent = "保存并生效";
+    saving = false;
+    refreshSaveState();
   }
 });
 

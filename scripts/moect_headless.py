@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 BJ = timezone(timedelta(hours=8))
 LOG_FILE = ROOT / "runtime" / "moect_headless.log"
-STATE_FILE = ROOT / "runtime" / "moect_live_state.json"
+ATTEMPT_FILE = ROOT / "runtime" / "moect_snapshot_attempt.json"
 DATA_DIR = ROOT / "runtime" / "moect_data"
 ARCHIVES = DATA_DIR / "archives"
 
@@ -211,21 +211,36 @@ def run_connect() -> bool:
             pass
 
 
+def run_cycle() -> bool:
+    try:
+        ok = run_connect()
+    except Exception as exc:
+        log(f"本轮异常: {type(exc).__name__}: {exc}")
+        ok = False
+    temporary = ATTEMPT_FILE.with_name(f"{ATTEMPT_FILE.name}.{os.getpid()}.tmp")
+    try:
+        ATTEMPT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps({
+            "ok": ok, "finished_at": datetime.now(BJ).isoformat(),
+        }), encoding="utf-8")
+        os.replace(temporary, ATTEMPT_FILE)
+    except OSError as exc:
+        log(f"无法保存采集状态: {type(exc).__name__}")
+    finally:
+        temporary.unlink(missing_ok=True)
+    log(f"本轮结果: {'OK' if ok else 'FAIL'}")
+    return ok
+
+
 def main() -> int:
     once = "--loop" not in sys.argv
     log(f"headless bridge 启动 mode={'once' if once else 'loop'}")
-    ok = run_connect()
-    log(f"本轮结果: {'OK' if ok else 'FAIL'}")
+    ok = run_cycle()
     if once:
         return 0 if ok else 1
-    interval = 120
     while True:
-        time.sleep(interval)
-        try:
-            run_connect()
-        except Exception as e:
-            log(f"本轮异常: {type(e).__name__}: {e}")
-    return 0
+        time.sleep(120)
+        run_cycle()
 
 
 if __name__ == "__main__":

@@ -120,26 +120,7 @@ Write-Host "[4/6] 生成配置文件（已有的不会被覆盖）..."
 if (-not (Test-Path (Join-Path $ROOT ".env"))) {
     Copy-Item (Join-Path $ROOT ".env.example") (Join-Path $ROOT ".env")
 }
-$personalJson = Join-Path $ROOT "config\personal.json"
-$newCfg = -not (Test-Path $personalJson)
-if ($newCfg) {
-    Copy-Item (Join-Path $ROOT "config\personal.example.json") $personalJson
-}
-if ($newCfg) {
-    Write-Host ""
-    Info @(
-" 现在会打开记事本，请填写 config\personal.json 里两项关键配置：",
-"   - identity ：你的微信昵称 / 真名（nicknames、real_name、sender_names）",
-"   - groups   ：你的工作群名（程序靠它识别""谁在给你派活""）",
-" 填完保存并关闭记事本，安装会自动继续。",
-" 暂时不想填也可以直接关闭，之后随时用记事本编辑该文件。",
-" 各字段含义见 README「配置」章节。"
-    )
-    Write-Host ""
-    Start-Process notepad.exe -ArgumentList "`"$personalJson`"" -Wait
-} else {
-    Write-Host "  配置文件已存在，跳过编辑。仍想修改可随时用记事本打开 config\personal.json。"
-}
+Write-Host "  首次打开工作台后，可在网页中填写微信名字并选择关注的会话。"
 Write-Host ""
 
 # ---------- 步骤 5：微信自动采集由独立脚本配置 ----------

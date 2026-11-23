@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
@@ -60,7 +61,7 @@ _DEFAULTS: Dict[str, Any] = {
 }
 
 # 已知顶层键，用于校验拼写错误（写错键名会被静默忽略，很难排查）
-_KNOWN_KEYS = set(_DEFAULTS) | {"_comment", "_说明"}
+_KNOWN_KEYS = set(_DEFAULTS) | {"_comment", "_说明", "scope_updated_at"}
 
 
 def _merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -141,7 +142,7 @@ if not MY_SENDER_NAMES and MY_NICKNAMES:
     MY_SENDER_NAMES = set(MY_NICKNAMES)
 
 # 是否配置了身份（没配就不该提取「给我的」事件）
-IDENTITY_CONFIGURED = bool(MY_NICKNAMES or MY_REALNAME)
+IDENTITY_CONFIGURED = bool(MY_NICKNAMES or MY_REALNAME or MY_SENDER_NAMES)
 
 
 # ------------------------- 群分层 -------------------------
@@ -188,6 +189,48 @@ def active_config_path() -> Path:
     return DEFAULT_CONFIG_PATH
 
 
+def read_local_config() -> dict:
+    path = active_config_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError("个人配置必须是 JSON 对象")
+    return data
+
+
+def write_local_config(data: dict) -> None:
+    path = active_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                     dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    reload()
+
+
+def public_identity() -> dict:
+    identity = _CONFIG.get("identity", {})
+    return {key: sorted(_as_set(identity.get(key))) for key in ("nicknames", "sender_names")}
+
+
+def group_bindings() -> dict:
+    return {level: {key: value for key, value in bindings.items()}
+            for level, bindings in (_CONFIG.get("group_ids") or {}).items()
+            if isinstance(bindings, dict)}
+
+
+def scope_updated_at() -> str | None:
+    return _CONFIG.get("scope_updated_at")
+
+
 def reload() -> None:
     """重新读取配置（改完 personal.json 后无需重启进程，调用本函数即可）。
 
@@ -207,7 +250,7 @@ def reload() -> None:
     MY_REALNAME = str(_identity.get("real_name") or "").strip()
     MY_SHORTNAME = str(_identity.get("short_name") or "").strip()
     MY_SENDER_NAMES = _as_set(_identity.get("sender_names")) or set(MY_NICKNAMES)
-    IDENTITY_CONFIGURED = bool(MY_NICKNAMES or MY_REALNAME)
+    IDENTITY_CONFIGURED = bool(MY_NICKNAMES or MY_REALNAME or MY_SENDER_NAMES)
 
     _groups = _CONFIG.get("groups", {})
     WORK_GROUPS = _as_set(_groups.get("work"))

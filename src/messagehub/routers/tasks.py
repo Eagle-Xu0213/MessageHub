@@ -24,6 +24,7 @@ class WorkbenchItem(BaseModel):
     category: Optional[str] = None
     deadline: Optional[str] = None
     status: Optional[str] = None
+    expected_updated_at: Optional[str] = None
 
 
 _CATEGORIES = {'材料提交', '报名填写', '会议活动', '沟通确认', '其他'}
@@ -66,7 +67,7 @@ def _context_summary(conn, task):
 
 
 def _validated_item(item: WorkbenchItem, creating: bool = False):
-    values = item.model_dump(exclude_unset=True)
+    values = item.model_dump(exclude_unset=True, exclude={"expected_updated_at"})
     if creating or 'title' in values:
         title = (values.get('title') or '').strip()
         if not title or len(title) > 200:
@@ -155,11 +156,18 @@ async def edit_workbench_item(task_id: int, item: WorkbenchItem):
     conn = get_db()
     try:
         assignments = ', '.join(f'{key}=?' for key in values)
-        cur = conn.execute(f'UPDATE personal_tasks SET {assignments} WHERE id=?', (*values.values(), task_id))
-        conn.commit()
+        condition = 'id=?'
+        parameters = (*values.values(), task_id)
+        if item.expected_updated_at is not None:
+            condition += ' AND updated_at=?'
+            parameters += (item.expected_updated_at,)
+        cur = conn.execute(f'UPDATE personal_tasks SET {assignments} WHERE {condition}', parameters)
         if not cur.rowcount:
-            raise HTTPException(status_code=404, detail='事项不存在')
-        return {'status': 'ok'}
+            if conn.execute('SELECT 1 FROM personal_tasks WHERE id=?', (task_id,)).fetchone():
+                raise HTTPException(409, '事项已更新，当前操作未生效')
+            raise HTTPException(404, '事项不存在')
+        conn.commit()
+        return {'status': 'ok', 'updated_at': values['updated_at']}
     finally:
         conn.close()
 

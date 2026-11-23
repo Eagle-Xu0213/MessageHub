@@ -7,6 +7,8 @@
 
   function show(config) {
     input.enabled.checked = config.enabled;
+    input.urgent_enabled.checked = config.urgent_enabled;
+    input.digest_frequency.value = config.digest_frequency;
     input.host.value = config.host;
     input.port.value = config.port;
     input.user.value = config.user;
@@ -19,6 +21,8 @@
     event.preventDefault();
     const data = {
       enabled: input.enabled.checked,
+      urgent_enabled: input.urgent_enabled.checked,
+      digest_frequency: input.digest_frequency.value,
       host: input.host.value,
       port: input.port.value,
       user: input.user.value,

@@ -963,10 +963,14 @@ def post_batches(messages: list, batch_size: int = 500) -> tuple:
 def run_once(args, state: dict) -> dict:
     if not args.no_refresh:
         ok = refresh_moect()
+        state["refresh_failed"] = not ok
         log(f"Moect 刷新 {'成功' if ok else '失败（使用现有快照）'}")
     snaps = list_snapshots()
     if not snaps:
         log("ERROR: 没有可用的解密快照")
+        if not args.no_refresh:
+            state["refresh_failed"] = True
+            save_state(state)
         return state
     generation = None
     try:
@@ -1058,6 +1062,8 @@ def run_once(args, state: dict) -> dict:
         state["cursor"] = cursor
     state["last_snapshot"] = snap.name
     if generation and drained and total_failed == 0:
+        if args.no_refresh and generation["generation"] != state.get("processed_generation"):
+            state.pop("refresh_failed", None)
         state["processed_generation"] = generation["generation"]
         state["snapshot_completed_at"] = generation["completed_at"]
     state["last_run"] = datetime.now(BJ).isoformat()
@@ -1133,7 +1139,7 @@ def check_env() -> int:
         print(f"[配置   ] ✓ {cfg}")
     else:
         print(f"[配置   ] ! 未找到 {cfg}")
-        print("          复制 personal.example.json 为 personal.json 并填写身份与工作群")
+        print("          首次打开工作台后填写微信名字和关注会话")
         print("          （不填也能采集，但不会提取工作事件）")
 
     print("-" * 56)

@@ -20,7 +20,7 @@ from messagehub.pipeline.watcher import scan_directory, get_latest_capture_statu
 from messagehub.pipeline.importer import make_fingerprint, insert_messages
 from messagehub.pipeline.live import get_collector
 from messagehub.routers import brief, live, tasks, scope
-from messagehub import schedule
+from messagehub import personal, schedule
 from messagehub import mail as brief_mail
 from messagehub import update
 from messagehub import task_pipeline, task_runtime
@@ -146,25 +146,53 @@ async def index(request: None = None):
 
 @app.get("/api/dashboard/capture")
 async def dashboard_capture():
-    """Report snapshot evidence without exposing collector configuration or messages."""
-    path = BASE_DIR / "runtime" / "moect_live_state.json"
+    """Report the last fully processed snapshot and whether it covers the saved scope."""
+    watched = bool(personal.WORK_GROUPS or personal.WATCH_GROUPS or
+                   personal.WORK_CONTACTS or personal.WATCH_CONTACTS)
+    runtime = BASE_DIR / "runtime"
+    path = runtime / "moect_live_state.json"
+    stamp = None
+    status = "unknown"
+    phase = "waiting"
     try:
-        state = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            state = {}
+        try:
+            attempt = json.loads((runtime / "moect_snapshot_attempt.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            attempt = {}
         stats = state.get("last_stats") or {}
-        completed = state.get("snapshot_completed_at")
-        stamp = datetime.fromisoformat(completed.replace("Z", "+00:00")) if completed else None
-        if stamp and stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=CN_TZ)
-        fresh = bool(stamp and timedelta(0) <= datetime.now(CN_TZ) - stamp < timedelta(minutes=15))
-        if stats.get("failed") or (stats and not stats.get("drained")):
-            status = "error"
-        elif fresh and state.get("processed_generation") and stats.get("drained"):
-            status = "ok"
+        if state.get("processed_generation") and state.get("snapshot_completed_at"):
+            stamp = _capture_time(state["snapshot_completed_at"])
+        scope_time = personal.scope_updated_at()
+        headless_failed = attempt.get("ok") is False and (
+            not stamp or _capture_time(attempt["finished_at"]) > stamp
+        )
+        if stats.get("failed") or state.get("refresh_failed") or headless_failed:
+            status, phase = "error", "failed"
+        elif not stamp or (scope_time and stamp <= _capture_time(scope_time)):
+            phase = "waiting"
+        elif not timedelta(0) <= datetime.now(CN_TZ) - stamp < timedelta(minutes=15):
+            phase = "delayed"
+        elif not stats.get("drained"):
+            phase = "waiting"
         else:
-            status = "unknown"
-        return {"status": status, "last_sync": completed, "tool": "Moect"}
-    except (OSError, ValueError, TypeError, AttributeError):
-        return {"status": "unknown", "last_sync": None, "tool": "Moect"}
+            status, phase = "ok", "normal"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        phase = "unavailable"
+    return {
+        "status": status, "phase": phase if watched else "unselected",
+        "last_sync": stamp.isoformat() if stamp else None, "tool": "Moect",
+        "identity_configured": personal.IDENTITY_CONFIGURED,
+        "scope_selected": watched,
+    }
+
+
+def _capture_time(value: str) -> datetime:
+    stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=CN_TZ)
 
 
 def _check_local_email_request(request: Request, *, writing: bool = False) -> None:
@@ -173,6 +201,49 @@ def _check_local_email_request(request: Request, *, writing: bool = False) -> No
         raise HTTPException(403, "请在本机工作台配置邮件通知")
     if writing and request.headers.get("origin") != f"http://{host}":
         raise HTTPException(403, "请从本机设置页面保存")
+
+
+def _check_identity_request(request: Request, *, writing: bool = False) -> None:
+    host = request.url.hostname
+    if host not in ("localhost", "127.0.0.1", "::1"):
+        raise HTTPException(403, "请在本机工作台配置身份")
+    if writing and request.headers.get("origin") != f"{request.url.scheme}://{request.url.netloc}":
+        raise HTTPException(403, "请从本机工作台保存")
+
+
+@app.get("/api/settings/identity")
+async def identity_settings(request: Request):
+    _check_identity_request(request)
+    return JSONResponse(personal.public_identity(), headers={"Cache-Control": "no-store"})
+
+
+@app.put("/api/settings/identity")
+async def update_identity_settings(request: Request):
+    _check_identity_request(request, writing=True)
+    if request.headers.get("content-type", "").split(";")[0] != "application/json":
+        raise HTTPException(415, "需要 JSON 格式")
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError
+        names = {}
+        for key in ("nicknames", "sender_names"):
+            values = payload.get(key, [])
+            if (not isinstance(values, list) or len(values) > 20 or
+                    any(not isinstance(v, str) or len(v) > 100 for v in values)):
+                raise ValueError
+            names[key] = list(dict.fromkeys(v.strip() for v in values if v.strip()))
+        if not any(names.values()):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(400, "请至少填写一个有效的微信昵称或群内发言名") from None
+    try:
+        data = personal.read_local_config()
+        data["identity"] = {**(data.get("identity") or {}), **names}
+        personal.write_local_config(data)
+    except (OSError, ValueError, TypeError):
+        raise HTTPException(500, "无法保存身份，请检查个人配置文件") from None
+    return JSONResponse(personal.public_identity(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/settings/email")

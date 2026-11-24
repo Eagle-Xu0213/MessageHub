@@ -22,6 +22,7 @@ from messagehub.pipeline.live import get_collector
 from messagehub.routers import brief, live, qq, tasks, scope
 from messagehub import personal, schedule
 from messagehub import mail as brief_mail
+from messagehub.llm import settings as ai_settings
 from messagehub import update
 from messagehub import task_pipeline, task_runtime
 
@@ -212,6 +213,14 @@ def _check_identity_request(request: Request, *, writing: bool = False) -> None:
         raise HTTPException(403, "请从本机工作台保存")
 
 
+def _check_local_llm_request(request: Request, *, writing: bool = False) -> None:
+    host = request.headers.get("host")
+    if host not in ("localhost:8000", "127.0.0.1:8000"):
+        raise HTTPException(403, "请在本机工作台配置 AI")
+    if writing and request.headers.get("origin") != f"http://{host}":
+        raise HTTPException(403, "请从本机设置页面保存")
+
+
 @app.get("/api/settings/identity")
 async def identity_settings(request: Request):
     _check_identity_request(request)
@@ -265,6 +274,26 @@ async def update_email_settings(request: Request):
     except OSError:
         raise HTTPException(500, "无法保存邮件配置，请检查运行目录权限") from None
     return JSONResponse(brief_mail.public_settings(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/settings/llm")
+def llm_settings(request: Request):
+    _check_local_llm_request(request)
+    return JSONResponse(ai_settings.public_settings(), headers={"Cache-Control": "no-store"})
+
+
+@app.put("/api/settings/llm")
+async def update_llm_settings(request: Request):
+    _check_local_llm_request(request, writing=True)
+    if request.headers.get("content-type", "").split(";")[0] != "application/json":
+        raise HTTPException(415, "需要 JSON 格式")
+    try:
+        ai_settings.save_settings(await request.json())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    except OSError:
+        raise HTTPException(500, "无法保存 AI 配置，请检查运行目录权限") from None
+    return JSONResponse(ai_settings.public_settings(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/health")

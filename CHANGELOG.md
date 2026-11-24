@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-24
+
+- 「设置 → AI 增强」新增可填写的接口地址、模型名和密钥，配置只保存在本机 `runtime/llm_settings.json`，密钥留空即保留原值且不回显；未配置时仍用本地规则或 `.env` 兼容回退。
+- 安装指引改为 Agent 全接管流程：自动准备 Python、Git、依赖与开机自启，用户只需登录微信、自行安装登录 QQ 引擎、确认身份和会话分级。
+- 明确 QQ 引擎须用户本人获取并接受发行包条款，Agent 不自动下载部署；连接后由 Agent 探测账号目录并通过状态接口自检。
+
 ## [2.1.1] - 2026-11-24
 
 - 明确语义化版本的选位规则和版本声明同步流程。
@@ -97,7 +103,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.1...v2.0.2

@@ -6,30 +6,32 @@
 
 把 [仓库链接](https://github.com/Eagle-Xu0213/MessageHub) 发给能操作这台电脑的 Agent，附上一句话就够了。
 
-> 帮我在这台电脑安装并打开 MessageHub。我想接入微信和 QQ。
+> 帮我在这台电脑安装并打开 MessageHub，接入微信和 QQ。
 
-只想用其中一个平台，或只想导入文件，直接在这句话里说明。Agent 会按 [AGENTS.md](AGENTS.md) 检查和复用现有安装、安装依赖、启动工作台，然后只请你完成必要的登录、QQ 引擎首次设置和会话选择。你也可以只发送链接，Agent 会用一句话确认要接入哪些来源。
+只想用其中一个平台，或只想导入文件，直接在这句话里说明。Agent 按 [AGENTS.md](AGENTS.md) 接管全部可自动化的工作：安装 Python、Git 和依赖，克隆并配置项目，启动工作台并注册开机自启与看门狗，探测 QQ 账号和引擎目录，给出会话分级建议。你只需做三件事：登录微信客户端；自行下载解压 QQ 引擎、接受其条款并登录；确认自己的名字和会话分级。也可以只发链接，Agent 会用一句话确认接入哪些来源。
 
 ### 自己安装
+
+不通过 Agent 时按下列顺序：
 
 1. Windows 10 / 11 安装 [Python 3.11+](https://www.python.org/downloads/) 和 [Git](https://git-scm.com/download/win)，克隆本仓库后双击 `setup.bat`。也可以直接在项目目录创建虚拟环境并执行 `pip install -e .`。macOS 和 Linux 可使用手动导入。
 2. **微信自动采集**需要微信桌面版 4.x。保持微信登录，在项目目录运行下面的命令。它会准备 Moect 源码和依赖，并注册本机计划任务。这一步仅对需要微信自动采集的人适用。
    ```powershell
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
    ```
-3. 双击 `启动 MessageHub.bat` 打开 [工作台](http://127.0.0.1:8000/)。按引导填写你在会话中使用的名字，打开「检测范围」选择群和联系人。已有配置会继续使用。
+3. 双击 `scripts\install_autostart.bat` 注册开机自启，再双击 `启动 MessageHub.bat` 打开 [工作台](http://127.0.0.1:8000/)。按引导填写你在会话中使用的名字，打开「检测范围」选择群和联系人。已有配置会继续使用。不注册自启时，关闭窗口即停止服务。
 
 ### QQ 实时采集
 
-MessageHub 通过本机 OneBot 11 接收已登录个人 QQ 的新消息。已有兼容引擎可以直接复用。没有引擎时，可自行获取并解压 [SnowLuma Windows x64 完整包](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2)，首次启动时请自行阅读许可和隐私条款，并完成 QQ 登录。SnowLuma 的专有组件有自动部署限制，需要独立安装。 [SnowLuma 发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)
+MessageHub 通过本机 OneBot 11 接收已登录个人 QQ 的新消息。官方 QQ 客户端登录不等于可采集：项目不解密数据库、不 Hook，唯一通道是引擎通过反向 WebSocket 推送事件。已有兼容引擎可直接复用。没有引擎时，请自行获取并解压 [SnowLuma Windows x64 完整包](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2)，打开发行包条款确认接受并完成 QQ 登录。其专有组件禁止自动部署，须由用户独立安装。[SnowLuma 发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)
 
-Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令牌。自行安装时，把示例账号和路径替换成自己的。然后在 SnowLuma 本机管理页接入 QQ，回到 [检测范围 → QQ](http://127.0.0.1:8000/select) 选择会话。切换引擎时请保留原配置，同一账号只连接一个引擎，避免登录冲突。
+装好并登录后，Agent 会自动探测安装目录和账号并运行下面的命令，无需手动填写账号、路径或令牌。自行安装时把占位值替换成实际的账号和目录，然后让引擎重载配置，回到 [检测范围 → QQ](http://127.0.0.1:8000/select) 选择会话，并以 `/api/qq/status` 确认连接状态。切换引擎时保留原配置，同一账号只连接一个引擎。
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\configure_qq.py --account 123456789 --snowluma-root "D:\你的SnowLuma目录"
+.\.venv\Scripts\python.exe scripts\configure_qq.py --account <QQ号> --snowluma-root <SnowLuma安装目录>
 ```
 
-已有其他 OneBot 11 兼容引擎时，可以省略 `--snowluma-root` 来准备 MessageHub 接收器。按 [Agent 指南](AGENTS.md) 配置引擎回连。QQ 无法实时连接时，也可以导入 QQ Chat Exporter V5 文件。
+已有其他 OneBot 11 兼容引擎时省略 `--snowluma-root` 来准备接收器，按 [Agent 指南](AGENTS.md) 配置回连。QQ 只采集保存关注范围之后的新消息，历史可用 QQ Chat Exporter V5 文件导入补齐。
 
 ## 日常使用
 
@@ -41,7 +43,7 @@ Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令�
 
 ## 可选配置与隐私
 
-任务识别使用本地规则，可能漏判或误判，重要事项请核对原文。使用任务识别不需要配置 AI 或邮件。需要邮件提醒时，在「设置 → 邮件通知」填写 SMTP 配置并开启；邮件可能包含事项内容、来源和截止时间。可选 AI 功能才会使用本机 `.env` 中的 `LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_API_KEY`，其中部分功能可能尝试 Pollinations 或 LLM7 等备用服务。
+任务识别默认使用本地规则，可能漏判或误判，重要事项请核对原文。使用任务识别不需要配置 AI 或邮件。需要更强的识别时，在「设置 → AI 增强」填写 OpenAI Chat Completions 兼容的接口地址、模型名和密钥；密钥留空表示保留原值，配置只保存在本机 `runtime/llm_settings.json`。主服务失败时部分功能可能尝试 Pollinations 或 LLM7 等备用服务，消息内容可能外发。需要邮件提醒时，在「设置 → 邮件通知」填写 SMTP 配置并开启；邮件可能包含事项内容、来源和截止时间。
 
 数据库、微信明文快照和运行配置保存在本机 `runtime/`，个人设置保存在 `config/personal.json`。保护这些文件、`.env` 和 QQ 接收令牌。排查时可查看 `runtime/moect_headless.log`、`runtime/moect_live.log` 和 `runtime/watchdog.log`，分享前请移除个人信息。
 

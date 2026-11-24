@@ -1,52 +1,96 @@
 # AGENTS.md · 帮用户最快用上 MessageHub
 
-用户发送仓库链接并希望安装时，直接负责安装、配置和验证。先读本页及 [README](README.md)，复用已有代码、虚拟环境、账号配置和数据。优先完成能自动做的部分，把需要人完成的操作集中交给用户。
+用户发来仓库链接就是请求安装。**总原则：Agent 接管一切能自动完成的事，用户只做无法代劳的事。** 用户操作压到最少，指令压到一句话，每一步用人话说明。
 
-## 1. 一次收集必要信息
+## 0. 角色边界（先读，别越界）
 
-从环境确认操作系统、Python 3.11+、Git、已有检出、配置和服务。用户已说清楚的内容直接沿用。需要询问时合并为一句：想接入微信、QQ 还是只导入文件，以及工作台识别的昵称或发言名是什么。已有身份配置时保留。工作群和联系人让用户稍后在网页选择，无需先发聊天清单。需要首次登录时由用户在客户端完成。
+用户只需亲自做三件，其余一律 Agent 完成，不要把能自动做的事甩回给用户：
 
-用一句话说明微信采集会在本机生成明文快照、QQ 自动采集会把所选会话的新消息保存到本机。安装可能下载依赖、Moect 源码和注册当前用户计划任务。任务识别无需 API 密钥或 SMTP。用户使用可选外部 AI 或邮件功能时，说明相应数据可能传给配置的服务，部分 AI 功能还有外部备用服务。
+1. 登录微信桌面版 4.x（接入微信时）。
+2. 自行下载解压 SnowLuma、接受其发行包条款、登录 QQ（接入 QQ 时）。
+3. 确认自己的微信昵称和会话分级——这是身份与隐私判断，Agent 可预填建议，但不可擅自定稿。
 
-## 2. 把工作台先跑起来
+**Agent 绝不**：代登录、代接受第三方条款、自动下载或部署第三方专有组件、把本机令牌或密钥贴进对话/终端输出/公开问题、用示例身份或假密钥填空。SnowLuma 的 [EULA 5.4](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md) 明确禁止用自动化脚本部署专有组件，必须用户本人获取并接受。
 
-- 核对现有目录、Git 远端和未提交改动。复用合适检出，用户未指定且没有已有安装时可克隆到桌面。保留数据库、快照、导入文件和真实配置，无需重建已有 `.venv`。
-- Windows 优先运行 `python -m venv .venv`（仅缺失时）和 `.\.venv\Scripts\python.exe -m pip install -e .`。若 Python 命令不可用，试 `py -3`。Linux 和 macOS 用系统的虚拟环境路径，并提供文件导入。自动化中避免调用会暂停的 `setup.bat`。
-- `.env`、`config/personal.json` 仅缺失时创建。以 JSON 库填入已知身份和会话，未知值留空，禁止采用示例身份或示例密钥。已知用户昵称或发言名时，请在首次启动前写入配置。需要用户补充时可从首页引导。
-- 启动本机 Uvicorn，使用 `.venv` 的 Python 执行 `-m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000`。Windows 微信安装后可由看门狗拉起服务。端口被占用时先核对进程归属。确认 `/api/health` 和首页实际返回后，给用户一个可点击地址。
+## 1. 一句话启动，少问多做
 
-## 3. 只安装用户选择的采集来源
+README 给用户的启动指令是：
 
-### 微信
+> 帮我在这台电脑安装并打开 MessageHub，接入微信和 QQ。
 
-要求微信桌面版 4.x 已由用户登录。Windows 在项目根目录运行：
+- 用户说清接入哪些来源就照办；只发链接没说来源时，用一句话确认"微信、QQ 还是只导入文件"。
+- **不要索要**聊天清单、群名单、QQ 号、引擎安装路径、昵称——这些 Agent 自己探测或稍后请用户确认。
+- 需要用户动手的事集中说明，不在过程中零散打断。
+- 用一句话讲清：微信采集会在本机生成明文快照，QQ 采集只保存所选会话启用后的新消息，数据都留在本机；任务识别不需要密钥或 SMTP；可选 AI/邮件才会把内容发给相应服务。
+
+## 2. Agent 自动完成装机（全程不问用户）
+
+### 2.1 环境与依赖
+
+- 核对操作系统、Python 3.11+、Git、已有检出、配置和服务。复用合适检出、`.venv`、数据库、快照、导入文件和真实配置，不重建已有环境。
+- **Python 缺失就自己装**，不要让用户装：优先 `winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements`；winget 不可用时试 `py -3`；都没有才给出 python.org 下载链接，此时请用户装一次。
+- **Git 缺失同理**：`winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements`。
+- 用户未指定且无已有安装时克隆到桌面。换机器不改脚本路径。
+- 建 `.venv` 并 `.\.venv\Scripts\python.exe -m pip install -e .`；依赖已含 `python-multipart`，不要漏装。macOS / Linux 用系统虚拟环境并只提供文件导入。
+- `.env` 和 `config/personal.json` 仅缺失时从 example 复制；以 JSON 库写入已知身份，未知值留空。**禁止写入示例身份、示例群名或假密钥。**
+- 自动化中避免调用会暂停的 `setup.bat`；直接执行等价命令。
+
+### 2.2 起服务并确保常驻
+
+- 起本机服务：`.venv` 的 Python 执行 `-m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000`。端口被占用先核对进程归属，不要盲目结束。
+- **关键**：Agent 会话结束后自己起的进程会被清理。要让服务长期可用，必须注册当前用户自启 `scripts\install_autostart.bat install`（写 HKCU Run → `autostart_silent.vbs`），并让计划任务看门狗每 5 分钟拉活 API 和采集器。只在会话里起一次服务不算部署完成。
+- 确认 `/api/health` 与首页实际返回后，给用户可点击的 [工作台](http://127.0.0.1:8000/) 地址。Windows 本机请求可用 `curl.exe --noproxy "*"`。
+- 交付时保留 `runtime/`、`config/`、`imports/`、`.env` 和用户未提交的代码。
+
+## 3. 微信：用户只登录一次
+
+- 要求微信桌面版 4.x 已由用户登录。未登录就请用户登录并保持运行——这是账号主体，无法代劳。
+- Agent 在项目根运行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
 ```
 
-脚本自动寻找或下载独立 Moect 源码、安装依赖并注册 `MessageHubHeadless` 和 `MessageHubWatchdog`。无需再安装 Moect 图形程序。核对同名任务是否属于该检出后再使用。检查任务状态、最新快照生成及其实际入库记录，再看 `/api/dashboard/capture`。配置完成或任务注册成功只代表环境就绪，须另行确认采集和入库。
+- 脚本自动寻找或克隆独立 Moect 源码、安装依赖、注册 `MessageHubHeadless` 和 `MessageHubWatchdog`，无需 Moect 图形程序。核对同名任务是否属于该检出后再用。
+- **验收**：任务状态 → 最新快照生成 → `/api/dashboard/capture` → 实际入库记录。注册任务成功只代表环境就绪，必须另行确认采集和入库。
+- **昵称**：Agent 从快照会话表和本库消息的发送者名统计出候选，经 `GET /api/settings/identity` 看现状、`PUT` 写入候选作为预填，再请用户确认或修正。不要凭空编造昵称，也不要因为用户一时没答就反复追问。
 
-### QQ
+## 4. QQ：用户下载并登录，Agent 接管其余
 
-优先复用已安装并获用户授权的 OneBot 11 引擎。Windows 上已实际连接过 SnowLuma 2.4.2。若缺失，提供 [发行页](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2) 及一条明确指令，请用户按 [发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md) 自行获取、解压、确认条款并登录。专有组件的自动部署需取得相应授权。继续交付工作台及其他来源，再从用户选择的安装目录完成连接配置。
+顺序固定为「用户先登录引擎，Agent 后配置」。官方 QQ 客户端已登录不等于可采集：项目不解密数据库、不 Hook、UIA 读不到 QQ 正文，唯一通道是 OneBot 11 引擎推送事件。
+
+没有已登录引擎时，Agent 只给 [发行页](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2) 和一句人话指令，请用户自行下载、解压、打开发行包条款确认接受并登录 QQ。Agent 不代下载、不代接受条款、不扫码。先把工作台和其他来源交付好，用户说装好后再接手配置。
+
+用户报告引擎就绪后，Agent 自动完成下列步骤，**不再向用户索要 QQ 号或安装目录**：
+
+1. **定位安装目录**：在 `%LOCALAPPDATA%\Programs`、`%ProgramFiles%`、`%USERPROFILE%\Desktop`、`%USERPROFILE%\Downloads` 等常见位置找同时含 `launcher.bat` 与 `index.mjs` 的目录；多个时按修改时间取最新，仍有歧义才请用户指认。
+2. **读取账号**：从该目录的 `data\<QQ号>\` 子目录读取已登录账号（与接收器读 `data/<account>/messages.db` 同一约定）；多个账号取最近写入的，无法确认才问用户。
+3. **写入连接配置**：用探测到的账号和目录运行下面命令。已有 `runtime/qq_onebot.json` 时复用账号和令牌，命令会写入反向连接并保护其他设置。
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\configure_qq.py --account <QQ号> --snowluma-root <已安装目录>
+.\.venv\Scripts\python.exe scripts\configure_qq.py --account <探测到的QQ号> --snowluma-root <探测到的安装目录>
 ```
 
-- 已有 `runtime/qq_onebot.json` 时复用其中的账号和令牌。首次使用从已授权本机引擎确认账号，无法确认再请用户提供。上面的命令会为已安装的 SnowLuma 写入本机反向连接，并保护其他连接设置。已有引擎正在运行时，通过它的正常流程重新载入配置。
-- 其他 OneBot 引擎运行同一命令但省略 `--snowluma-root`，然后在该引擎配置 Universal 反向 WebSocket，地址为 `ws://127.0.0.1:8000/api/qq/onebot/ws`，消息格式为数组。将本机配置文件中的令牌填到引擎端，会以 Bearer 方式校验。令牌保留在本机，禁止贴到聊天、终端输出或公开问题。
-- 确认管理端口和回连只监听本机，避免多个引擎同时使用同一账号。用户完成 QQ 登录后检查 `/api/qq/status`、心跳和「检测范围 → QQ」的群及好友。提示用户选择会话并保存。有新测试消息才能核实入库和待办。QQ 导出导入始终可独立使用。
-- 旧版 `scripts/manage_qq_capture.ps1` 仅管理已存在的 NapCat 安装。指定其实际路径，避免默认下载旧发行包或覆盖用户的引擎设置。
+4. **让引擎重载配置**：已有引擎运行时请用户按其正常流程重载或重启一次。SnowLuma 是 Electron 程序，`scripts/qq_supervisor.py` 与 `manage_qq_capture.ps1` 仅适用于 NapCat（`node.exe` + `index.js`），不要用它管理 SnowLuma，也不要在用户可能有未保存工作时强行结束进程。
+5. **自行验证**：轮询 `/api/qq/status`，确认 `state=connected`、有心跳、`handshake_failure` 为空；再查「检测范围 → QQ」是否列出群及好友。状态接口已能区分 `waiting_handshake`、`account_mismatch`、`heartbeat_timeout`，不要让用户在群里发测试消息。
+6. **提醒新消息边界**：QQ 只采集保存关注范围之后的新消息，提前说明；历史可用 QQ Chat Exporter 文件导入补齐。
 
-## 4. 验收与交付
+其他 OneBot 引擎省略 `--snowluma-root` 运行同一命令，再在该引擎配置 Universal 反向 WebSocket，地址 `ws://127.0.0.1:8000/api/qq/onebot/ws`，消息格式数组，令牌以 Bearer 校验。令牌从本机配置读取，禁止外泄。确认管理端口和回连只监听本机，同一账号只连一个引擎。QQ 导出导入始终可独立使用。
 
-1. 核对 [工作台](http://127.0.0.1:8000/) 实际打开。Windows 本机请求可用 `curl.exe --noproxy "*"`。
-2. 在 [检测范围](http://127.0.0.1:8000/select) 确认微信和 QQ 选择独立保存。只使用手动导入的用户直接指向「我的待办 → 导入与采集」。
-3. 区分服务运行、平台连接、消息入库、规则生成事项四个状态。没有新消息时，如实告知待验证环节。页面自动刷新只更新显示。以平台采集和入库记录判断同步结果。
-4. 最终只列用户能做的下一步和入口。需要排查时先读对应日志，只输出脱敏状态。任何升级或维修都保留 `runtime/`、`config/`、`imports/`、`.env` 以及用户未提交的代码。
+## 5. 会话分级：Agent 预选，用户确认
 
-## 5. 版本与发布
+- Agent 调 `GET /api/scope/conversations` 拿会话清单，按任务词命中、我方发言占比、最近活跃度给出三级建议：工作 / 混合 / 不检测。
+- 拿不准的一律往保守放（混合或不检测），**不要默认全部设成工作**，否则噪声淹没真正待办。
+- 把建议整理成一句话请用户确认或微调，用户点头后 Agent 通过 `POST /api/scope/config` 保存。用户只需确认，不必逐条勾选。
+- 微信和 QQ 分别保存。只导入文件的用户直接指向「我的待办 → 导入与采集」，不打扰他们做分级。
 
-每次完成并验证改动后，维护者按 [语义化版本](https://semver.org/lang/zh-CN/) 选择下一版本，及时同步两个版本声明和变更记录。一般无需再向用户确认选哪一位。具体规则见 [贡献指南](CONTRIBUTING.md#版本管理)。
+## 6. 验收与交付
+
+1. [工作台](http://127.0.0.1:8000/) 实际打开；[检测范围](http://127.0.0.1:8000/select) 分别保存微信和 QQ。
+2. 区分四个状态：服务运行、平台连接、消息入库、规则生成事项。没有新消息时如实告知待验证环节；页面自动刷新只更新显示，以采集和入库记录判断同步结果。
+3. 邮件和 AI 默认都不配。用户主动要邮件提醒时才引导在「设置 → 邮件通知」填 SMTP 授权码；要 AI 时引导在「设置 → AI 增强」填接口地址、模型名和密钥。用户私下给出的密钥由 Agent 通过工作台表单或 gitignored 的 `.env` 写入本机，禁止写进仓库文件、对话或公开问题；并说明消息内容可能外发、主服务失败时可能尝试免费备用服务。
+4. 最终只列用户能做的下一步和入口。排查先读对应日志，只输出脱敏状态，分享前移除个人信息。
+
+## 7. 版本与发布
+
+每次完成并验证改动后，维护者按[语义化版本](https://semver.org/lang/zh-CN/)选择下一版本，及时同步两个版本声明和变更记录，一般无需再问选哪一位。规则见[贡献指南](CONTRIBUTING.md#版本管理)。

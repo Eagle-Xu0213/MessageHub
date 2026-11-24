@@ -68,7 +68,12 @@ class LLMProvider:
 
     @classmethod
     def from_env(cls) -> "LLMProvider":
-        return cls(enabled=bool(os.getenv("LLM_API_KEY")))
+        """工作台配置优先，未配置时回退到 .env（兼容老用户）。"""
+        from messagehub.llm.settings import active_config
+
+        cfg = active_config()
+        return cls(base_url=cfg["base_url"], api_key=cfg["api_key"] or None,
+                   model=cfg["model"], enabled=cfg["enabled"])
 
     # ---------------- 统一降级链 ----------------
 

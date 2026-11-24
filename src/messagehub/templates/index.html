@@ -174,6 +174,34 @@
           <a href="/select">管理检测范围 →</a>
         </div>
 
+        <!-- AI enhancement -->
+        <div class="glass panel settings">
+          <h2>AI 增强（可选）</h2>
+          <p class="muted">填写后任务识别会更细致；不填也能正常使用，系统会用本地规则整理。</p>
+          <form id="llm-settings" autocomplete="off">
+            <fieldset id="llm-fields" disabled>
+              <p class="muted">填写的消息内容会发送给你指定的接口；主服务失败时可能尝试 Pollinations 或 LLM7 等免费备用服务。请不要填写不便外发的内容。</p>
+              <label class="switch">
+                <input type="checkbox" name="enabled"> 启用 AI 增强
+              </label>
+              <label>
+                接口地址（OpenAI Chat Completions 兼容）
+                <input name="base_url" placeholder="https://api.example.com/v1" spellcheck="false">
+              </label>
+              <label>
+                模型名
+                <input name="model" placeholder="gpt-4o-mini" spellcheck="false">
+              </label>
+              <label>
+                API 密钥
+                <input name="api_key" type="password" autocomplete="new-password" spellcheck="false">
+              </label>
+              <button type="submit" class="btn primary">保存 AI 配置</button>
+            </fieldset>
+            <p id="llm-status" role="status">正在读取 AI 配置…</p>
+          </form>
+        </div>
+
         <!-- Email notifications -->
         <div class="glass panel settings">
           <h2>邮件通知</h2>
@@ -394,6 +422,7 @@ $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{cons
 (async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
 </script>
 <script src="/static/dashboard.js"></script>
+<script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>
 </html>

@@ -6,13 +6,13 @@
     "identity.short_name: 别人直呼你时的简称（如姓名去掉姓），留空则不启用直呼匹配",
     "identity.sender_names: 你自己发言时显示的昵称，用于判断「我是否已回复」",
     "groups.work: 明确的工作群名，会提取指派/@我/通知类事件",
-    "groups.watch: 混杂群名，仅当「cue 我 + 有任务语义」双条件满足才报",
+    "groups.watch: 混合群名，仅当「cue 我 + 有任务语义」双条件满足才报",
     "groups.excluded: 明确排除的群，即使匹配规则也不处理",
     "contacts.work: 工作级联系人（备注/昵称），TA 的私聊非噪声即报",
     "contacts.watch: 混合级联系人，私聊需带任务语义才报",
-    "contacts.excluded: 不检测的联系人；未列出的联系人私聊一律不采集",
+    "contacts.excluded: 未关注的联系人；未列出的联系人私聊一律不采集",
     "aliases: 群 ID 到可读群名的映射，键是不带 @chatroom 的数字 ID",
-    "brief.persona: 生成晨报时 LLM 的人设描述，例如「一位大学生」"
+    "brief.persona: 生成晨报时 LLM 的人设描述，例如「一名需要处理工作事项的用户」"
   ],
   "identity": {
     "nicknames": ["你的微信昵称"],
@@ -40,6 +40,6 @@
     "12345678": "示例群名"
   },
   "brief": {
-    "persona": "一位大学生"
+    "persona": "一名需要处理工作事项的用户"
   }
 }

@@ -12,7 +12,7 @@
 
   <!-- Back-link header -->
   <nav class="topnav" style="display:flex;gap:16px;margin-bottom:24px;font-size:13px;">
-    <a href="/">← 工作台</a>
+    <a href="/">← 返回工作台</a>
     <a href="/select">检测范围</a>
     <a href="/live" class="cur">实时接入</a>
   </nav>
@@ -20,19 +20,11 @@
   <!-- Page title -->
   <div class="page-title" style="margin-bottom:24px;">
     <h1>实时消息接入</h1>
-    <p class="sub" style="margin:4px 0 0;">第一阶段：只负责把新消息持续接进来。整理与分类规则下一阶段再设计。</p>
+    <p class="sub" style="margin:4px 0 0;">查看接入的实时消息，管理采集通道和 HTTP 接入点。</p>
   </div>
 
-  <!-- UIA limitation note -->
   <div class="note">
-    <b>实测结论（2026-11-15 · 屏幕已解锁 / 全群已授权）</b>：微信 4.2 主窗口可见，
-    但消息区是 <code>MMUIRenderSubWindowHW</code> 自绘层——UIA 控件树 63 个节点、
-    <b>0 条消息文本</b>，TextPattern / ValuePattern / 原生子窗口均取不到正文。
-    这是客户端渲染架构限制，与解锁、白名单、窗口可见都无关，
-    因此「客户端 UIA 只读」当前<b>采不到消息</b>，不是配置问题。<br>
-    可靠通道是下方「标准接入点」：任何能拿到新消息的工具 POST 进来即可实时入库并推送到消息流。<br>
-    <b>数据边界不变</b>：不点击、不置前、不发送、不解密、不读原始聊天数据库；
-    UIA 取不到精确消息时间时标记 <code>capture_time</code>，绝不伪称精确时间。
+    客户端 UIA 目前无法读取微信 4.2 的消息正文。接入实时消息可使用标准 HTTP 接入点或文件增量监听。
   </div>
 
   <!-- ═══ Runtime Status ═══ -->
@@ -65,7 +57,7 @@
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px;">
       <button class="primary" id="btnStart">启动采集</button>
-      <button id="btnStop">停止</button>
+      <button id="btnStop">停止采集</button>
       <button id="btnPoll">手动采集一轮</button>
       <button id="btnProbe">只读环境探测</button>
       <span id="ctlMsg" class="hint"></span>
@@ -89,7 +81,7 @@
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;">
       <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
-        <input type="checkbox" id="srcTail" checked> 文件尾随 tail（导出工具持续写入 JSONL）
+        <input type="checkbox" id="srcTail" checked> 文件增量监听（tail）（导出工具持续写入 JSONL）
       </label>
       <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
         <input type="checkbox" id="srcUia" checked> 客户端 UIA 只读
@@ -106,7 +98,7 @@
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
       <label style="margin:0;white-space:nowrap;">工作群白名单</label>
       <input type="text" id="cfgChats" style="flex:1;min-width:200px;max-width:420px;"
-             placeholder="多个群用英文逗号分隔；留空 = 不采集客户端消息">
+             placeholder="多个群用英文逗号分隔；留空表示不采集客户端消息">
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
       <button class="primary" id="btnSave">保存配置</button>
@@ -122,7 +114,7 @@
       <span class="badge">推荐 · 已验证</span>
     </div>
     <p class="hint" style="margin:0 0 8px;">
-      任何能拿到新消息的工具（导出器、桥接程序、推送脚本）调用一次即可：消息当轮入库、按指纹去重、
+      任何能拿到新消息的工具（导出器、桥接程序、推送脚本）调用一次即可：消息入库时自动去重、
       立刻出现在下方消息流。<b>不依赖微信 / QQ 客户端控件结构</b>，是当前唯一稳定可用的实时通道。
     </p>
     <pre id="ingestExample">POST http://127.0.0.1:8000/api/live/ingest
@@ -138,7 +130,7 @@ Content-Type: application/json
 }</pre>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;">
       <button class="primary" id="btnCopy">复制 PowerShell 示例</button>
-      <button id="btnTryIngest">发一条接入示例</button>
+      <button id="btnTryIngest">发送示例消息</button>
       <span class="hint" id="copyMsg"></span>
     </div>
     <div class="fieldlist">
@@ -159,16 +151,16 @@ Content-Type: application/json
       <span id="latestTs" style="font-size:12px;color:var(--faint);"></span>
     </div>
     <div id="stream">
-      <div class="empty">尚无新消息流入</div>
+      <div class="empty">暂未收到新消息</div>
     </div>
     <div class="msgbox">
       <input type="text" id="testText" placeholder="输入一条测试消息，验证实时通道（会真实写入数据库）">
       <button id="btnInject">发送测试消息</button>
     </div>
     <p class="hint" style="margin-top:10px;">
-      其它接入方式：向 <code>imports/live/*.jsonl</code> 追加 JSONL 行（tail 尾随），
+      其他接入方式：向 <code>imports/live/*.jsonl</code> 追加 JSONL 行（tail 尾随），
       或 <code>POST /api/live/inject</code> 写入单条；正式批量推送请用上方
-      <code>POST /api/live/ingest</code>。三种方式共用指纹去重，重复内容不会膨胀。
+      <code>POST /api/live/ingest</code>。三种方式共用指纹去重，重复推送不会重复入库。
     </p>
   </section>
 
@@ -209,7 +201,7 @@ Content-Type: application/json
     var html = '';
     ['tail', 'uia', 'ingest'].forEach(function (key) {
       var st = (s.sources || {})[key] || {};
-      var title = key === 'tail' ? '文件尾随 tail'
+      var title = key === 'tail' ? '文件增量监听（tail）'
         : (key === 'uia' ? '客户端 UIA 只读' : '标准接入点 HTTP ingest');
       var dot = st.enabled ? statusDot(st.status) : 'off';
       var meta = '';
@@ -315,7 +307,7 @@ Content-Type: application/json
       es.onmessage = function (ev) {
         try { appendEvent(JSON.parse(ev.data)); } catch (err) { /* 忽略心跳外异常 */ }
       };
-      es.onerror = function () { setText('streamBadge', '连接断开，自动重连中'); };
+      es.onerror = function () { setText('streamBadge', '连接已断开，正在自动重连…'); };
     } catch (e) { /* 不支持 SSE 时靠 5 秒轮询兜底 */ }
   }
 
@@ -374,9 +366,9 @@ Content-Type: application/json
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(cmd).then(function () {
         setText('copyMsg', '已复制，粘贴到 PowerShell 回车即可');
-      }).catch(function () { setText('copyMsg', '复制失败，请改用下方「发一条接入示例」'); });
+      }).catch(function () { setText('copyMsg', '复制失败，请改用下方「发送示例消息」'); });
     } else {
-      setText('copyMsg', '浏览器不支持自动复制，请点「发一条接入示例」验证');
+      setText('copyMsg', '浏览器不支持自动复制，请点击「发送示例消息」验证');
     }
   };
   $('btnTryIngest').onclick = function () {
@@ -401,7 +393,7 @@ Content-Type: application/json
       sender_name: '本机验证',
       text: t
     }).then(function (r) {
-      if (r.success) { $('testText').value = ''; setText('ctlMsg', '已写入，稍候消息流会出现'); }
+      if (r.success) { $('testText').value = ''; setText('ctlMsg', '测试消息已写入，稍后将在消息流中显示'); }
       else setText('ctlMsg', '写入失败');
       loadStatus();
     });

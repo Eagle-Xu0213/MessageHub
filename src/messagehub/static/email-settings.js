@@ -14,7 +14,7 @@
     input.user.value = config.user;
     input.recipient.value = config.to;
     input.password.value = '';
-    input.password.placeholder = config.has_password ? '已保存，留空保留' : '填写邮箱服务提供的授权码';
+    input.password.placeholder = config.has_password ? '已保存，留空将保留原授权码' : '填写邮箱服务提供的授权码';
   }
 
   form.addEventListener('submit', async event => {
@@ -42,7 +42,7 @@
       show(config);
       status.textContent = config.enabled ? '已保存，邮件通知已开启。' : '已保存，邮件通知已关闭。';
     } catch (error) {
-      status.textContent = error.message || '保存失败，请重试。';
+      status.textContent = error.message || '保存失败，请稍后重试。';
     } finally {
       fields.disabled = false;
     }
@@ -56,6 +56,6 @@
     status.textContent = config.enabled ? '邮件通知已开启。' : '邮件通知已关闭。';
     fields.disabled = false;
   }).catch(() => {
-    status.textContent = '无法读取邮件配置。请用本机 8000 端口打开工作台并刷新。';
+    status.textContent = '无法读取邮件配置，请通过本机地址打开工作台后刷新重试。';
   });
 })();

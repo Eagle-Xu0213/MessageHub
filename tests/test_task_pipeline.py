@@ -215,7 +215,7 @@ def test_simultaneous_urgent_tasks_share_desktop_notification():
     notices = []
     out = send_due_alerts(db, lambda ev: {'sent': True}, lambda ev: notices.append(ev) or True, now)
     assert out == {'urgent': 2, 'mail': 2, 'desktop': 2}
-    assert len(notices) == 1 and '2 项任务' in notices[0]['text']
+    assert len(notices) == 1 and '2 项待办' in notices[0]['text']
     assert send_due_alerts(db, lambda ev: True, lambda ev: notices.append(ev) or True, now)['desktop'] == 0
 
 
@@ -244,7 +244,7 @@ def test_scheduler_processes_without_sending_mail(tmp_path, monkeypatch):
             'last_stats': {'drained': True}}), encoding='utf-8')
         time.sleep(.12)
         assert not sent
-        assert scheduler.state['capture'] == '补扫完成'
+        assert scheduler.state['capture'] == '消息检查已完成'
         with sqlite3.connect(path) as check:
             assert check.execute('SELECT COUNT(*) FROM personal_tasks').fetchone()[0] == 1
     finally:

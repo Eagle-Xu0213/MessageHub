@@ -72,7 +72,7 @@ if (-not $py) {
 "     Add python.exe to PATH】再点 Install Now。",
 "",
 " 装好后请打开一个【新的】cmd 窗口验证：python --version",
-" 能显示 3.11 以上版本号即可。"
+" 显示 3.11 或更高版本号即可。"
     )
 }
 Write-Host "[1/6] 找到 Python：$py"
@@ -95,13 +95,14 @@ if (Test-Path $venvPy) {
 Write-Host ""
 
 # ---------- 步骤 3：安装依赖 ----------
-Write-Host "[3/6] 升级 pip ..."
+Write-Host "[3/6] 准备并安装依赖
+      正在升级 pip…"
 & $venvPy -m pip install --upgrade pip 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      （pip 升级失败，继续尝试安装依赖）" -ForegroundColor Yellow
 }
 Write-Host ""
-Write-Host "[3/6] 安装依赖（首次需联网下载，约 1-2 分钟）..."
+Write-Host "      正在安装依赖，首次需要联网…"
 & $venvPy -m pip install -e .
 if ($LASTEXITCODE -ne 0) {
     Fail @(
@@ -153,7 +154,7 @@ Write-Host "  2. 微信自动采集：登录微信后，执行："
 Write-Host '     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"'
 Write-Host "     手动导入可跳过此步。详见 README。"
 Write-Host ""
-Write-Host "  3. 遇到问题请看 README 的「排错 FAQ」章节。"
+Write-Host "  3. 遇到问题请查看 README 的日志说明，或在 GitHub Issues 反馈。"
 Write-Host "============================================"
 Write-Host ""
 Wait-Key

@@ -343,7 +343,7 @@ async def save_scope(payload: ScopeSave):
     return JSONResponse({
         "status": "ok",
         "levels": _current_levels(),
-        "note": "规则引擎已热更新；实时采集器下一轮生效。",
+        "note": "关注范围已保存。",
     })
 
 
@@ -510,7 +510,7 @@ async def ai_presel(payload: PreselRequest):
         digest = _conversation_digest(name, kind)
         if digest is None:
             results[name] = {"level": None, "score": 0,
-                             "reason": "本库没有该会话的消息，无法判断",
+                             "reason": "暂无该会话的历史消息，无法自动分级",
                              "source": "none"}
             continue
         digests[name] = digest

@@ -21,7 +21,7 @@ class TaskScheduler:
         self.started_at = datetime.now(CN_TZ)
         self._stop = threading.Event()
         self._thread = None
-        self.state = {'running': False, 'capture': '等待新快照', 'last_error': None}
+        self.state = {'running': False, 'capture': '等待下一轮同步', 'last_error': None}
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -70,7 +70,7 @@ class TaskScheduler:
                         if digest_email:
                             task_pipeline.send_current_digest(conn, mail.send_digest_email)
                     ready = self.snapshot_ready()
-                    self.state['capture'] = '补扫完成' if ready else '等待微信新快照'
+                    self.state['capture'] = '消息检查已完成' if ready else '等待微信下一轮同步'
                     self.state['last_error'] = None
             except Exception as exc:
                 self.state['last_error'] = f'{type(exc).__name__}: {exc}'

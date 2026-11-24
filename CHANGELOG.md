@@ -2,19 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## 2.0.2 · 2026-11-24
+## [Unreleased]
+
+## [2.1.0] - 2026-11-24
+
+- 统一界面、通知和安装提示，修正已过时的文档说明。
+
+## [2.0.2] - 2026-11-24
 
 - 调整工作台首页的配色、字号与留白，保留便当盒布局和现有操作入口。
 - 日历突出有待办到期的日期，消息采集卡增加状态标记。
 
-## 2.0.1 · 2026-11-24
+## [2.0.1] - 2026-11-24
 
 - 重新设计工作台，新增按待办截止日期查看的日历和活动页面自动刷新。
 - 支持本机 OneBot 11 实时接收 QQ 群聊和好友消息，保留 QQ 文件导入。
 - 微信与 QQ 独立设置工作、混合和未关注会话，支持按分级筛选及按可用活动时间排列 QQ 群。
 - 修正微信快照发布与入库之间的交接，补充 QQ 连接诊断和 Agent 安装指引。
-
-## [Unreleased]
 
 ## [1.3.0] - 2026-11-23
 
@@ -89,6 +93,10 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.2...v2.1.0
+[2.0.2]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v1.3.0...v2.0.1
+[1.3.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v0.1.0...v1.2.0
 [0.1.0]: https://github.com/Eagle-Xu0213/MessageHub/releases/tag/v0.1.0

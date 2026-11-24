@@ -1,16 +1,16 @@
 # Third-Party Notices / 第三方组件声明
 
-MessageHub 以 [MIT](LICENSE) 协议发布。本文件列出其依赖或调用的第三方开源组件的来源、许可证与使用方式。各组件版权归其各自的权利所有者；本项目不是任何下游组件的官方发布版。
+MessageHub 以 [MIT](LICENSE) 协议发布。本文件列出其依赖或调用的第三方开源组件的来源、许可证与使用方式。各组件版权归其各自的权利所有者；各第三方组件的官方发行由其项目维护者负责。
 
 ## Moect（独立的外部工具，不属于本项目）
 
-- 项目：<https://github.com/ILoveScratch2/Moect>
+- 项目：<https://github.com/mofan6/Moect>
 - 许可证：GPL-3.0（衍生自 QQ Chat Exporter、WeChatMsg / WeChatMsg-4x，详见其仓库内的归属声明）
-- 关系声明：MessageHub **不包含、不分发、不修改** Moect 的任何代码或二进制文件，与其作者无隶属关系。Moect 由用户自行安装（`winget install Moect` 或其 Releases 页面），在本机独立运行；MessageHub 仅以只读方式调用 Moect 已生成的明文 SQLite 快照文件（`moect_live.py` 采集桥），不接触其解密密钥内容。
+- 使用方式：安装脚本在独立目录复用或克隆 Moect 源码。无界面计划任务调用该源码生成本机明文快照，采集桥读取快照。MessageHub 仓库不包含 Moect 源码或二进制文件。
 
 ## QQ OneBot 引擎（用户独立安装）
 
-MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件。可连接用户已有的兼容引擎，例如 [SnowLuma](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2) 或 NapCat。引擎及其专有组件由其发行方分别授权，项目不包含其程序。SnowLuma 专有组件的自动部署及再分发限制见 [发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)。
+MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件。可连接用户已有的兼容引擎，例如 [SnowLuma](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2) 或 NapCat。引擎及其专有组件由各自发行方独立授权。MessageHub 不随应用分发这些程序。SnowLuma 专有组件的自动部署及再分发限制见 [发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)。
 
 ## 运行时依赖（Python 包）
 
@@ -26,7 +26,10 @@ MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件�
 | zstandard | BSD-3-Clause | <https://github.com/indygreg/python-zstandard> |
 | httpx | BSD-3-Clause | <https://github.com/encode/httpx> |
 
-以上为 `pyproject.toml` 直接声明的依赖；其传递依赖（click、h11、anyio、markitup、markupsafe、pydantic-core、typing-extensions 等）随 pip 安装元数据分发，保留各自原许可证。
+| psutil | BSD-3-Clause | <https://github.com/giampaolo/psutil> |
+| pycryptodomex | 见上游许可证 | <https://github.com/Legrandin/pycryptodome> |
+
+以上为 `pyproject.toml` 直接声明的依赖；其传递依赖（click、h11、anyio、markupsafe、pydantic-core、typing-extensions 等）随 pip 安装元数据分发，保留各自原许可证。
 
 ## 开发依赖
 
@@ -40,7 +43,7 @@ MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件�
 ## 许可证说明
 
 - 上表许可证类型以各组件仓库当前 LICENSE 文件为准；如个别组件许可证版本有出入，以组件自身声明为准。
-- 本项目代码不复制、不内嵌上述任何组件的源码，仅通过 PyPI 正常安装其发行包。
+- Python 依赖通过 PyPI 安装。Moect 源码和 QQ 引擎按各自的方式独立准备。
 
 ## 免责声明
 

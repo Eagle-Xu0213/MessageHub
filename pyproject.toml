@@ -1,12 +1,12 @@
 [project]
 name = "messagehub"
-version = "2.0.2"
-description = "本地优先的微信工作消息中枢：群消息 → 待办清单，数据不出本机"
+version = "2.1.0"
+description = "本地优先的微信与 QQ 工作消息中枢，将重要聊天整理为待办清单"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [{ name = "MessageHub Contributors" }]
-keywords = ["wechat", "chat", "task-extraction", "local-first", "privacy", "fastapi"]
+keywords = ["wechat", "qq", "chat", "task-extraction", "local-first", "privacy", "fastapi"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",

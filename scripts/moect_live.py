@@ -376,7 +376,7 @@ def refresh_moect() -> bool:
     if not MOECT_EXE.is_file():
         log(f"找不到 Moect 可执行文件：{MOECT_EXE}")
         log("  请安装 Moect 并用环境变量 MOECT_EXE 指向 Moect.exe，"
-            "或加 --no-refresh 只读现有快照。详见 README「Moect 集成」。")
+            "或加 --no-refresh 只读现有快照。使用计划任务自动同步时，请参阅 README 的微信自动采集步骤。")
         return False
     # 首选 headless 桥（2026-11-20）：直接调 Moect GPL 源码的 Service.connect()，
     # 完全绕开 GUI/WebView2/.NET 启动链。当日实测 GUI 路径因 WebView2 初始化
@@ -1128,7 +1128,7 @@ def check_env() -> int:
         print("[快照   ] ✗ 没找到可用快照")
         print(f"          查过：{DATA_DIR / 'archives'}")
         print(f"                {FALLBACK_ARCHIVES}")
-        print("          先手动运行一次 Moect，确认它能解密并生成快照")
+        print("          使用自动同步时，请按 README 安装计划任务，并确认微信已登录")
         ok = False
 
     # 5) 服务

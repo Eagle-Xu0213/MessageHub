@@ -1,4 +1,4 @@
-"""Windows 桌面通知（toast）：加急任务即时可见。
+"""Windows 桌面通知（toast）：紧急待办即时可见。
 
 不引入 win11toast / plyer 等第三方依赖，直接调 PowerShell 的
 Windows.UI.Notifications API（Win10/11 内置）。失败静默返回 False，
@@ -85,10 +85,10 @@ def notify(title: str, body: str, app_id: str = _APP_ID, url: str = "http://127.
 
 def notify_urgent(event: Dict[str, Any]) -> bool:
     """加急事件专用通知。"""
-    group = event.get("conversation_name") or "未知来源"
+    group = event.get("conversation_name") or "未知会话"
     text = (event.get("text") or "").strip()[:120]
     ddl = event.get("deadline") or ""
     body = text + (f"\n截止：{ddl}" if ddl else "")
     task_id = event.get("id")
     url = "http://127.0.0.1:8000/" + (f"#task-{int(task_id)}" if task_id is not None else "")
-    return notify("⚡ 加急任务 · " + group, body, url=url)
+    return notify("⚡ 紧急待办 · " + group, body, url=url)

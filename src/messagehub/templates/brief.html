@@ -12,7 +12,7 @@
 
         <!-- Top navigation -->
         <nav class="topnav" style="display:flex;gap:16px;align-items:center;margin-bottom:24px;font-size:13px;">
-            <a href="/">← 返回首页</a>
+            <a href="/">← 返回工作台</a>
             <span style="color:var(--faint);">/</span>
             <span style="color:var(--ink);font-weight:600;">每日工作简报</span>
             <span style="flex:1;"></span>
@@ -24,7 +24,7 @@
         <div class="header card" style="padding:24px 28px;margin-bottom:20px;">
             <h1 style="margin-bottom:6px;">📋 每日工作简报</h1>
             <p class="sub" style="margin-bottom:16px;">
-                规则引擎从工作群提取事件 · 闭环检测排除你已处理过的 · 点击任意事件查看群内上下文
+                按日期查看待办、待回复、通知和已处理事项。点击有来源的条目可查看附近聊天记录。
             </p>
             <div class="controls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);margin:0;">
@@ -35,10 +35,10 @@
                         {% endfor %}
                     </select>
                 </label>
-                <button class="primary" onclick="regenerate()" id="regenBtn">🔄 重新生成</button>
+                <button class="primary" onclick="regenerate()" id="regenBtn">重新生成</button>
                 <button onclick="resetBaseline()" id="resetBtn"
                         style="background:var(--urgent);border-color:var(--urgent);color:var(--on-accent);">
-                    🧹 清零重开
+                    重置监测起点
                 </button>
             </div>
         </div>
@@ -53,21 +53,21 @@
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-todo">待办</span></h2>
-                    <span class="sub" style="font-size:12px;">需要你动手</span>
+                    <span class="sub" style="font-size:12px;">需要处理</span>
                 </div>
                 <div id="secTodos"></div>
             </div>
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-reply">需回复</span></h2>
-                    <span class="sub" style="font-size:12px;">等你的话</span>
+                    <span class="sub" style="font-size:12px;">等待你的回复</span>
                 </div>
                 <div id="secReplies"></div>
             </div>
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-notice">通知</span></h2>
-                    <span class="sub" style="font-size:12px;">知道就行</span>
+                    <span class="sub" style="font-size:12px;">仅需知晓</span>
                 </div>
                 <div id="secNotices"></div>
             </div>
@@ -77,15 +77,15 @@
         <div class="panel" style="margin-bottom:20px;">
             <div class="panel-head">
                 <h2><span class="badge badge-done">已处理</span></h2>
-                <span class="sub" style="font-size:12px;">闭环回顾（这些不会再出现在待办里）</span>
+                <span class="sub" style="font-size:12px;">已完成的事项</span>
             </div>
             <div id="secResolved"></div>
         </div>
 
         <!-- Footnote -->
         <div class="footnote">
-            监测模式：{{ "基线 " + (brief.baseline or "") + " 起，只看新消息（历史已清零）" if brief.baseline else "未设基线，按最近一天窗口" }}。
-            规则口径：12 个工作群必报 / 2 个混杂群需「cue 你 + 任务语义」双条件 / 办公室2026·兔子洞·生活群已排除。
+            监测范围：{{ "从 " + (brief.baseline or "") + " 起统计新消息" if brief.baseline else "未设置起始时间时，默认查看最近一天" }}。
+            简报与工作台共用事项记录。自动识别可能遗漏，请核对原文。
             闭环状态来自你对事件后续消息的回复分析。
         </div>
     </div>
@@ -98,7 +98,7 @@
                 <span id="modalGroup" style="color:var(--faint);font-size:12px;margin-left:8px;"></span>
             </h4>
             <div id="modalBody">
-                <div class="loading">加载中...</div>
+                <div class="loading">正在加载…</div>
             </div>
             <div style="text-align:center;margin-top:14px;">
                 <button onclick="closeModal()">关闭</button>
@@ -110,9 +110,9 @@
         const brief = {{ brief | tojson }};
 
         const STATUS_LABEL = {
-            answered_ok: "✅ 你已应答",
-            answered_alt: "🔁 已改期/替代",
-            answered_no: "❌ 已婉拒",
+            answered_ok: "已回复",
+            answered_alt: "已改期或调整",
+            answered_no: "已婉拒",
             unanswered: ""
         };
 
@@ -146,16 +146,16 @@
                 "ai-banner " + (b.degraded ? "ai-warn" : "ai-ok");
             document.getElementById("aiBanner").innerHTML =
                 `<strong>${b.date}</strong> · ${escapeHtml(b.ai_summary)}`;
-            renderSection("secTodos", b.sections.todos, "🎉 今天没有待办");
-            renderSection("secReplies", b.sections.replies, "👍 没有等你回复的消息");
-            renderSection("secNotices", b.sections.notices, "今日无通知");
+            renderSection("secTodos", b.sections.todos, "今日暂无待办");
+            renderSection("secReplies", b.sections.replies, "暂无待回复消息");
+            renderSection("secNotices", b.sections.notices, "今日暂无通知");
             renderSection("secResolved", b.sections.resolved, "暂无已处理记录");
         }
 
         async function showContext(messageId) {
             document.getElementById("modalMask").classList.add("show");
             const body = document.getElementById("modalBody");
-            body.innerHTML = '<div class="loading">加载中...</div>';
+            body.innerHTML = '<div class="loading">正在加载…</div>';
             try {
                 const r = await fetch(`/api/brief/event/${messageId}/context?around=5`);
                 const d = await r.json();
@@ -170,9 +170,9 @@
                 for (const m of d.before) html += item(m, false);
                 html += item(d.center, true);
                 for (const m of d.after) html += item(m, false);
-                body.innerHTML = html || '<div class="empty">无上下文</div>';
+                body.innerHTML = html || '<div class="empty">暂无相关聊天记录</div>';
             } catch (e) {
-                body.innerHTML = `<div class="empty">加载失败：${e}</div>`;
+                body.innerHTML = `<div class="empty">聊天记录加载失败，请稍后重试</div>`;
             }
         }
 
@@ -188,14 +188,14 @@
                 const b = await r.json();
                 renderAll(b);
             } finally {
-                btn.disabled = false; btn.textContent = "🔄 重新生成";
+                btn.disabled = false; btn.textContent = "重新生成";
             }
         }
 
         async function resetBaseline() {
-            if (!confirm("确定清零重开？以现在为新基线，旧简报清空，只监测此后新消息。")) return;
+            if (!confirm("确定重置监测起点？这会删除已保存的旧简报，并以当前时间作为新起点。")) return;
             const btn = document.getElementById("resetBtn");
-            btn.disabled = true; btn.textContent = "清零中…";
+            btn.disabled = true; btn.textContent = "正在重置…";
             try {
                 const r = await fetch("/api/brief/reset", {method: "POST"});
                 const d = await r.json();
@@ -203,9 +203,9 @@
                 // 刷新日期下拉（旧日期已清空）
                 const sel = document.getElementById("dateSelect");
                 sel.innerHTML = `<option value="${d.brief.date}" selected>${d.brief.date}</option>`;
-                alert("已清零。基线：" + d.baseline);
+                alert("已重置监测起点：" + d.baseline);
             } finally {
-                btn.disabled = false; btn.textContent = "🧹 清零重开";
+                btn.disabled = false; btn.textContent = "重置监测起点";
             }
         }
 

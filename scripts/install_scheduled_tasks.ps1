@@ -1,4 +1,4 @@
-# MessageHub: one-shot installer for the two Windows scheduled tasks.
+﻿# MessageHub: one-shot installer for the two Windows scheduled tasks.
 # ASCII only (avoid Windows encoding traps). No admin rights required.
 #
 # What it does:
@@ -76,45 +76,45 @@ function Find-SystemPythonExe {
     return $null
 }
 
-Write-Host "Project root : $project"
+Write-Host "项目目录：$project"
 if (-not (Test-Path $venvPython)) {
-    throw "Virtual env not found: $venvPython. Run setup / pip install -e . first."
+    throw "未找到虚拟环境 $venvPython。请先运行 setup.bat 完成安装。"
 }
-Write-Host "venv Python  : $venvPython"
+Write-Host "虚拟环境 Python：$venvPython"
 
 # --- 1. Ensure Moect GPL source -------------------------------------------
 $foundSrc = Find-MoectSource
 if ($foundSrc) {
-    Write-Host "Moect source : $foundSrc (already present)"
+    Write-Host "复用 Moect 源码：$foundSrc"
 } else {
     if ($DryRun) {
-        Write-Host "[DryRun] Would clone Moect GPL source into: $moectSrc"
+        Write-Host "[DryRun] 将下载 Moect 源码到：$moectSrc"
     } else {
-        Write-Host "Cloning Moect GPL source (GPL-3.0, gitignored) into: $moectSrc"
+        Write-Host "正在下载 Moect 源码到：$moectSrc"
         & git clone --depth 1 https://github.com/mofan6/Moect.git $moectSrc
-        if ($LASTEXITCODE -ne 0) { throw "Failed to clone Moect source. Check git / network." }
+        if ($LASTEXITCODE -ne 0) { throw "下载 Moect 源码失败，请检查 Git 和网络。" }
     }
 }
 
 # --- 2. Ensure system Python + headless dependencies -----------------------
 $sysPython = Find-SystemPythonExe
 if (-not $sysPython) {
-    throw "No system Python 3.11+ found. Install Python 3.12 from python.org (check 'Add python.exe to PATH'), then re-run."
+    throw "未找到 Python 3.11 或更高版本。请先安装 Python，再重新运行本脚本。"
 }
 $sysDir = Split-Path $sysPython -Parent
 $sysPythonw = Join-Path $sysDir "pythonw.exe"
 if (-not (Test-Path $sysPythonw)) {
-    throw "pythonw.exe not found next to $sysPython (needed for silent scheduled runs)."
+    throw "未找到与 $sysPython 同目录的 pythonw.exe，后台任务需要它。"
 }
-Write-Host "System Python: $sysPython"
-Write-Host "Silent runner: $sysPythonw"
+Write-Host "系统 Python：$sysPython"
+Write-Host "后台任务程序：$sysPythonw"
 
 if (-not $DryRun) {
     $probe = & $sysPython -c "import psutil, Cryptodome, zstandard, PIL, dotenv" 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installing headless dependencies into system Python..."
+        Write-Host "正在安装微信采集依赖…"
         & $sysPython -m pip install --disable-pip-version-check psutil pycryptodomex zstandard pillow python-dotenv
-        if ($LASTEXITCODE -ne 0) { throw "Failed to install headless dependencies into $sysPython" }
+        if ($LASTEXITCODE -ne 0) { throw "微信采集依赖安装失败：$sysPython" }
     }
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 }
@@ -141,26 +141,26 @@ $watchdogSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
 
 if ($DryRun) {
-    Write-Host "[DryRun] Would register the per-user MessageHub notification shortcut."
-    Write-Host "[DryRun] Headless action: $($headlessAction.Execute) $($headlessAction.Arguments)"
-    Write-Host "[DryRun] Watchdog action: $($watchdogAction.Execute) $($watchdogAction.Arguments)"
-    Write-Host "[DryRun] No scheduled tasks were modified."
+    Write-Host "[DryRun] 将为当前用户注册 MessageHub 桌面通知快捷方式。"
+    Write-Host "[DryRun] 快照任务：$($headlessAction.Execute) $($headlessAction.Arguments)"
+    Write-Host "[DryRun] 看门狗任务：$($watchdogAction.Execute) $($watchdogAction.Arguments)"
+    Write-Host "[DryRun] 未修改计划任务。"
 } else {
     try {
         & (Join-Path $PSScriptRoot 'install_toast_shortcut.ps1')
     } catch {
-        Write-Warning "Notification shortcut could not be installed: $_"
+        Write-Warning "无法安装桌面通知快捷方式：$_"
     }
     Register-ScheduledTask -TaskName "MessageHubHeadless" -Action $headlessAction `
         -Trigger $triggers -Settings $headlessSettings -Force | Out-Null
     Register-ScheduledTask -TaskName "MessageHubWatchdog" -Action $watchdogAction `
         -Trigger $triggers -Settings $watchdogSettings -Force | Out-Null
     Write-Host ""
-    Write-Host "Registered tasks:"
+    Write-Host "已注册计划任务"
     foreach ($name in @("MessageHubHeadless", "MessageHubWatchdog")) {
         $task = Get-ScheduledTask -TaskName $name
         Write-Host ("  {0}: {1} | {2}" -f $name, $task.State, $task.Actions[0].Execute)
     }
     Write-Host ""
-    Write-Host "Done. Log in to WeChat Desktop and leave it running; snapshots and mail will be automatic."
+    Write-Host "安装完成。请登录微信桌面版并保持运行。可在工作台查看同步状态。"
 }

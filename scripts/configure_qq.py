@@ -19,7 +19,7 @@ def read_config(path: Path) -> dict:
         return {}
     result = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(result, dict):
-        raise ValueError("Configuration must be a JSON object")
+        raise ValueError("配置文件必须包含一个 JSON 对象。")
     return result
 
 
@@ -38,14 +38,14 @@ def write_config(path: Path, data: dict) -> None:
 
 def configure(receiver: Path, account: str, snowluma_root: Path | None = None) -> None:
     if not re.fullmatch(r"[1-9][0-9]{4,19}", account):
-        raise ValueError("Please enter the QQ account number")
+        raise ValueError("请输入要接入的 QQ 号。")
     current = read_config(receiver)
     if current.get("account") and str(current["account"]) != account:
-        raise ValueError("A different QQ account is already configured")
+        raise ValueError("已有其他 QQ 账号的配置，请先核对现有账号。")
     target = dict(current)
     token = current.get("token") or secrets.token_urlsafe(32)
     if not isinstance(token, str):
-        raise ValueError("The existing receiver token is invalid")
+        raise ValueError("现有 QQ 接收令牌无效，请检查本机配置。")
     target.update(enabled=True, account=account, token=token)
     if snowluma_root is None:
         write_config(receiver, target)
@@ -53,17 +53,17 @@ def configure(receiver: Path, account: str, snowluma_root: Path | None = None) -
 
     root = snowluma_root.resolve(strict=True)
     if not (root / "index.mjs").is_file() or not (root / "launcher.bat").is_file():
-        raise ValueError("Choose the folder containing the extracted SnowLuma runtime")
+        raise ValueError("请选择解压后的 SnowLuma 安装目录。")
     engine_path = root / "config" / f"onebot_{account}.json"
     engine = read_config(engine_path)
     networks = engine.setdefault("networks", {})
     for key in ("httpServers", "httpClients", "wsServers", "wsClients"):
         if not isinstance(networks.setdefault(key, []), list):
-            raise ValueError("Unexpected OneBot network configuration")
+            raise ValueError("OneBot 网络配置格式无效，请检查本机文件。")
     clients = networks["wsClients"]
     matches = [client for client in clients if client.get("url") == ENDPOINT]
     if len(matches) > 1:
-        raise ValueError("Duplicate MessageHub connections already exist")
+        raise ValueError("已有多条相同的 MessageHub 连接，请先检查引擎配置。")
     if matches:
         connection = matches[0]
     else:
@@ -85,8 +85,8 @@ def configure(receiver: Path, account: str, snowluma_root: Path | None = None) -
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--account", help="QQ account, defaults to the previously configured account")
-    parser.add_argument("--snowluma-root", type=Path, help="An existing SnowLuma installation folder")
+    parser.add_argument("--account", help="QQ 号，默认使用已配置的账号")
+    parser.add_argument("--snowluma-root", type=Path, help="已安装的 SnowLuma 目录")
     args = parser.parse_args()
     receiver = ROOT / "runtime" / "qq_onebot.json"
     try:
@@ -95,11 +95,11 @@ def main() -> None:
     except (OSError, TypeError, AttributeError, ValueError) as exc:
         if isinstance(exc, ValueError) and not isinstance(exc, json.JSONDecodeError):
             parser.exit(1, str(exc) + "\n")
-        parser.exit(1, "Could not read or update the local QQ configuration.\n")
+        parser.exit(1, "无法读取或更新本机 QQ 配置，请检查文件格式和权限。\n")
     if args.snowluma_root:
-        print("Local QQ connection configured. Open SnowLuma and connect your QQ client.")
+        print("已配置本机 QQ 连接，请打开 SnowLuma 并接入 QQ 客户端。")
     else:
-        print("Receiver configured. Use its local configuration token in your engine's reverse WebSocket client.")
+        print("已配置 QQ 接收器。请将本机配置中的令牌填入引擎的反向 WebSocket 设置。")
 
 
 if __name__ == "__main__":

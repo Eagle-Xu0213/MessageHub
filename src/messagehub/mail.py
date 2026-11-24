@@ -93,7 +93,7 @@ def save_settings(data: dict) -> None:
             raise ValueError("邮件配置格式无效。")
         cfg[key] = value.strip()
     if cfg["port"] and (not cfg["port"].isdigit() or not 1 <= int(cfg["port"]) <= 65535):
-        raise ValueError("端口须为 1 至 65535。")
+        raise ValueError("SMTP 端口需在 1 至 65535 之间。")
     with _settings_lock:
         old = _settings()
         cfg["urgent_enabled"] = data.get("urgent_enabled", old.get("urgent_enabled", True))
@@ -104,7 +104,7 @@ def save_settings(data: dict) -> None:
             if cfg["host"] == old.get("host") and cfg["user"] == old.get("user"):
                 cfg["pass"] = old.get("pass", "")
         if cfg["enabled"] and not _ready(cfg):
-            raise ValueError("启用前请填写完整的 SMTP 设置与授权码。")
+            raise ValueError("启用邮件通知前，请填写 SMTP 设置、授权码和收件邮箱。")
         path = _settings_path()
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
                                          dir=path.parent, delete=False) as handle:
@@ -153,15 +153,15 @@ def render_brief_html(brief: Dict[str, Any]) -> str:
 
     s = brief.get("sections", {})
     st = brief.get("stats", {})
-    todo_html = "".join(item(x) for x in s.get("todos", [])) or '<div style="color:#999;">今日无待办</div>'
-    reply_html = "".join(item(x) for x in s.get("replies", [])) or '<div style="color:#999;">无待回复</div>'
-    notice_html = "".join(item(x) for x in s.get("notices", [])) or '<div style="color:#999;">无通知</div>'
+    todo_html = "".join(item(x) for x in s.get("todos", [])) or '<div style="color:#999;">今日暂无待办</div>'
+    reply_html = "".join(item(x) for x in s.get("replies", [])) or '<div style="color:#999;">暂无待回复消息</div>'
+    notice_html = "".join(item(x) for x in s.get("notices", [])) or '<div style="color:#999;">今日暂无通知</div>'
     resolved_html = "".join(item(x) for x in s.get("resolved", []))
 
     resolved_block = ""
     if s.get("resolved"):
         resolved_block = (
-            '<h3 style="color:#389e0d;font-size:15px;margin:20px 0 8px;">✅ 已处理（闭环）</h3>'
+            '<h3 style="color:#389e0d;font-size:15px;margin:20px 0 8px;">✅ 已处理事项</h3>'
             + resolved_html)
 
     return f"""<div style="font-family: -apple-system, 'Microsoft YaHei', sans-serif; max-width:640px; margin:0 auto; color:#2c3e50;">
@@ -195,11 +195,11 @@ def send_brief_email(brief: Dict[str, Any], force: bool = False) -> Dict[str, An
     """
     cfg = _smtp_config()
     if not cfg:
-        return {"sent": False, "detail": "SMTP 未配置（.env 缺 SMTP_USER/PASS/BRIEF_TO）"}
+        return {"sent": False, "detail": "邮件服务未配置，请在「设置 → 邮件通知」或 .env 中完善 SMTP 配置。"}
 
     stats = brief.get("stats", {})
     if not force and not any(stats.get(k) for k in ("todos", "replies", "notices")):
-        return {"sent": False, "detail": "空简报，按设计不发（无事静默）"}
+        return {"sent": False, "detail": "暂无新事项，本次不发送邮件。"}
 
     date = brief.get("date", "")
     n = stats.get("todos", 0) + stats.get("replies", 0) + stats.get("notices", 0)
@@ -274,9 +274,9 @@ def render_digest_html(payload: Dict[str, Any]) -> str:
             f'<div style="background:#f0fdf4;border-left:4px solid #16a34a;'
             f'padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.7;margin:14px 0;">'
             f'{e(summary)}</div>')
-    since = payload.get("since") or "初次整理"
+    since = payload.get("since") or "首次汇总"
     kind = payload.get("kind") or "catchup"
-    title = "每小时工作汇总" if kind == "hourly" else "积压整理"
+    title = "每小时工作汇总" if kind == "hourly" else "离线期间汇总"
     since_label = "最近一小时" if kind == "hourly" else f"自 {e(str(since)[:16])} 以来"
     return f"""<div style="font-family:-apple-system,'Microsoft YaHei',sans-serif;max-width:640px;margin:0 auto;color:#2c3e50;">
   <h2 style="color:#1a73e8;">📋 {title} · {e(payload.get('date',''))}</h2>
@@ -286,7 +286,7 @@ def render_digest_html(payload: Dict[str, Any]) -> str:
   {''.join(blocks) or '<div style="color:#999;">无待处理事项</div>'}
   {resolved_block}
   <hr style="margin-top:24px;border:none;border-top:1px solid #eee;">
-  <div style="font-size:11px;color:#aaa;">由 MessageHub {'每小时汇总' if kind == 'hourly' else '唤醒补扫'}自动生成 · {e(payload.get('generated_at',''))}</div>
+  <div style="font-size:11px;color:#aaa;">由 MessageHub {'每小时汇总' if kind == 'hourly' else '离线期间汇总'}自动生成 · {e(payload.get('generated_at',''))}</div>
 </div>"""
 
 
@@ -327,9 +327,9 @@ def send_digest_email(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"sent": False, "detail": "待办汇总邮件已关闭"}
     st = payload.get("stats", {})
     if not st.get("open") and not st.get("resolved") and not st.get("review"):
-        return {"sent": False, "detail": "空整理，静默"}
+        return {"sent": False, "detail": "暂无新事项，本次不发送邮件。"}
     kind = payload.get("kind") or "catchup"
-    label = "每小时汇总" if kind == "hourly" else "积压整理"
+    label = "每小时汇总" if kind == "hourly" else "离线期间汇总"
     subject = (f"[MessageHub] {label} {payload.get('date','')} · "
                f"待办{st.get('open',0)} / {st.get('groups',0)}类")
     return _send_html(subject, render_digest_html(payload))

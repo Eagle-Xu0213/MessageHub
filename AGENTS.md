@@ -12,7 +12,7 @@
 
 - 核对现有目录、Git 远端和未提交改动。复用合适检出，用户未指定且没有已有安装时可克隆到桌面。保留数据库、快照、导入文件和真实配置，无需重建已有 `.venv`。
 - Windows 优先运行 `python -m venv .venv`（仅缺失时）和 `.\.venv\Scripts\python.exe -m pip install -e .`。若 Python 命令不可用，试 `py -3`。Linux 和 macOS 用系统的虚拟环境路径，并提供文件导入。自动化中避免调用会暂停的 `setup.bat`。
-- `.env`、`config/personal.json` 仅缺失时创建。以 JSON 库填入已知身份和会话，未知值留空，禁止采用示例身份或示例密钥。有身份时在首次启动前配置。需要用户补充时可从首页引导。
+- `.env`、`config/personal.json` 仅缺失时创建。以 JSON 库填入已知身份和会话，未知值留空，禁止采用示例身份或示例密钥。已知用户昵称或发言名时，请在首次启动前写入配置。需要用户补充时可从首页引导。
 - 启动本机 Uvicorn，使用 `.venv` 的 Python 执行 `-m uvicorn messagehub.app:app --host 127.0.0.1 --port 8000`。Windows 微信安装后可由看门狗拉起服务。端口被占用时先核对进程归属。确认 `/api/health` 和首页实际返回后，给用户一个可点击地址。
 
 ## 3. 只安装用户选择的采集来源
@@ -25,7 +25,7 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
 ```
 
-脚本自动寻找或下载独立 Moect 源码、安装依赖并注册 `MessageHubHeadless` 和 `MessageHubWatchdog`。无需再安装 Moect 图形程序。核对同名任务是否属于该检出后再使用。检查任务状态、最新快照生成及其实际入库记录，再看 `/api/dashboard/capture`。配置完成或任务注册成功只代表准备就绪。
+脚本自动寻找或下载独立 Moect 源码、安装依赖并注册 `MessageHubHeadless` 和 `MessageHubWatchdog`。无需再安装 Moect 图形程序。核对同名任务是否属于该检出后再使用。检查任务状态、最新快照生成及其实际入库记录，再看 `/api/dashboard/capture`。配置完成或任务注册成功只代表环境就绪，须另行确认采集和入库。
 
 ### QQ
 
@@ -44,5 +44,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_schedul
 
 1. 核对 [工作台](http://127.0.0.1:8000/) 实际打开。Windows 本机请求可用 `curl.exe --noproxy "*"`。
 2. 在 [检测范围](http://127.0.0.1:8000/select) 确认微信和 QQ 选择独立保存。只使用手动导入的用户直接指向「我的待办 → 导入与采集」。
-3. 区分服务运行、平台连接、消息入库、规则生成事项四个状态。没有新消息时，如实告知待验证环节。后台轮询刷新与原始采集频率不同。
+3. 区分服务运行、平台连接、消息入库、规则生成事项四个状态。没有新消息时，如实告知待验证环节。页面自动刷新只更新显示。以平台采集和入库记录判断同步结果。
 4. 最终只列用户能做的下一步和入口。需要排查时先读对应日志，只输出脱敏状态。任何升级或维修都保留 `runtime/`、`config/`、`imports/`、`.env` 以及用户未提交的代码。

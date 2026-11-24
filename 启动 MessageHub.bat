@@ -33,11 +33,9 @@ for /f "delims=" %%P in ('py -3 -c "import sys;print(sys.executable)" 2^>nul') d
   goto :python_ok
 )
 
-echo [错误] 没有找到 Python。
-echo   请先安装 Python 3.11+ 并勾选 "Add python.exe to PATH"，
-echo   或在项目根目录执行：
-echo     python -m venv .venv
-echo     .venv\Scripts\pip install -e .
+echo [错误] 未找到可用的 Python。
+echo   请先安装 Python 3.11 或更高版本并勾选 "Add python.exe to PATH"。
+echo   安装后双击 setup.bat，按向导准备项目。
 echo   也可以用环境变量 MESSAGEHUB_PYTHON 指定 python.exe 完整路径。
 pause
 exit /b 1

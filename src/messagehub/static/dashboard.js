@@ -10,12 +10,12 @@
   let homeRequest = 0;
 
   const captureCopy = {
-    unselected: ['尚未选择会话', '选择想关注的群或联系人，保存后等待微信同步。', '/select?setup=1', '选择关注会话'],
-    waiting: ['等待新快照同步', '保持微信登录。最近保存的范围将在新快照处理完成后生效。', '/live', '查看采集进度'],
+    unselected: ['尚未选择会话', '请在检测范围选择要关注的群聊或联系人。', '/select?setup=1', '选择关注会话'],
+    waiting: ['等待下一轮微信同步', '请保持微信登录，刚保存的关注范围将在下一轮同步后生效。', '/live', '查看运行状态'],
     normal: ['同步正常'],
-    delayed: ['同步延迟', '超过 15 分钟没有完成新一轮同步。', '#system', '检查运行状态'],
-    failed: ['同步失败', '请检查微信登录和采集器状态。', '/live', '查看采集状态'],
-    unavailable: ['状态暂不可用', '暂时无法读取采集状态。', '#system', '检查运行状态'],
+    delayed: ['同步延迟', '已超过 15 分钟未完成同步，请确认微信已登录。', '#system', '查看运行状态'],
+    failed: ['同步失败', '请确认微信已登录，并检查同步服务状态。', '/live', '查看运行状态'],
+    unavailable: ['无法读取同步状态', '请稍后重试，或查看运行状态。', '#system', '查看运行状态'],
   };
 
   function closeMenu() {
@@ -32,7 +32,7 @@
 
   async function get(url) {
     const response = await fetch(url, {signal: AbortSignal.timeout(8000)});
-    if (!response.ok) throw new Error('请求失败');
+    if (!response.ok) throw new Error('操作失败，请稍后重试。');
     return response.json();
   }
 
@@ -136,7 +136,7 @@
       await home();
     } catch (error) {
       message.dataset.error = 'true';
-      message.textContent = error.message || '保存失败，请重试。';
+      message.textContent = error.message || '保存失败，请稍后重试。';
     } finally {
       submit.disabled = false;
     }
@@ -209,14 +209,14 @@
     renderCalendar();
     const isSoon = item => deadline(item) >= now && deadline(item) <= now + day;
     q('#pending-count').textContent = list.length;
-    q('#soon-count').textContent = list.filter(isSoon).length + ' 项即将到期';
+    q('#soon-count').textContent = list.filter(isSoon).length + ' 项即将截止';
     q('#review-count').textContent = data.items.filter(item => item.status === 'review').length;
     if (!list.length) {
       q('#home-tasks').textContent = phase === 'normal' ? '同步正常，暂无待处理事项' : '暂无待处理事项';
       return;
     }
     q('#home-tasks').innerHTML = list.slice(0, 5).map(item => {
-      const due = deadline(item) < now ? '已逾期 · ' : isSoon(item) ? '即将到期 · ' : '';
+      const due = deadline(item) < now ? '已逾期 · ' : isSoon(item) ? '即将截止 · ' : '';
       const time = item.deadline ? '截止 ' + item.deadline.replace('T', ' ').slice(0, 16) : '无截止时间';
       return '<div class="home-task"><button class="check" data-complete="' + item.id +
         '" aria-label="完成事项"></button><button class="task-open" data-task="' + item.id + '">' +
@@ -236,8 +236,8 @@
     showSetup(state);
     if (result) renderHomeTasks(result, state?.phase);
     else {
-      q('#calendar-results').textContent = '截止日期加载失败，请稍后重试。';
-      q('#home-tasks').textContent = '待办加载失败，请刷新重试。';
+      q('#calendar-results').textContent = '截止日期加载失败，请刷新页面重试。';
+      q('#home-tasks').textContent = '待办加载失败，请刷新页面重试。';
       q('#pending-count').textContent = '—';
       q('#review-count').textContent = '—';
       q('#soon-count').textContent = '暂不可用';
@@ -253,7 +253,7 @@
     try {
       await load();
       const item = items.find(entry => entry.id === id);
-      if (!item || !active(item)) throw new Error('事项已更新，请查看最新列表。');
+      if (!item || !active(item)) throw new Error('该事项已有变动，请查看最新列表后重试。');
       if (done) {
         await changeStatus(item, 'completed');
         q('#home-feedback').textContent = '';
@@ -285,17 +285,17 @@
     const qqLabels = {disabled: '未启用', stopped: '等待 QQ 引擎连接', waiting_login: '等待 QQ 登录',
       waiting_handshake: '等待 OneBot 连接', restarting: 'QQ 引擎正在重启', connected: '已连接', disconnected: '已断线'};
     const qqTime = timestamp => new Date(timestamp).toLocaleString();
-    const qqDisconnect = {peer_closed: 'QQ 引擎关闭连接', transport_lost: '连接意外中断',
+    const qqDisconnect = {peer_closed: 'QQ 引擎已断开连接', transport_lost: '连接意外中断',
       config_changed: '本地配置变更', protocol_error: 'OneBot 协议异常',
-      receiver_stopped: '接收器停止', receiver_error: '接收器异常', heartbeat_timeout: '心跳超时', account_mismatch: 'QQ 账号不匹配'};
+      receiver_stopped: '本机接收服务已停止', receiver_error: '接收器异常', heartbeat_timeout: '心跳超时', account_mismatch: 'QQ 账号不匹配'};
     const qqStages = {login_info: '校验账号', group_list: '读取群聊', friend_list: '读取好友'};
     q('#system-info').innerHTML = [
       '服务：' + (health ? '正常' : '不可用'),
       '采集：' + captureLabel(state),
       syncTime(state),
       'QQ 实时采集：' + (qqLabels[qq?.state] || '状态不可用'),
-      ...(qq?.state === 'waiting_login' ? ['请在本机 QQ 引擎管理页完成登录。'] : []),
-      ...(qq?.process_issue === 'duplicate_login' ? ['QQ 账号已经在另一个客户端登录。'] : []),
+      ...(qq?.state === 'waiting_login' ? ['请打开 QQ 引擎管理页完成登录。'] : []),
+      ...(qq?.process_issue === 'duplicate_login' ? ['该 QQ 账号已在其他客户端登录，请确认登录状态后重试。'] : []),
       ...(qq?.handshake_failure ? ['QQ 上次连接失败：' + (qqStages[qq.handshake_failure.stage] || '连接初始化') +
         ' · ' + (qqDisconnect[qq.handshake_failure.reason] || '连接未完成')] : []),
       ...(qq?.last_heartbeat_at ? ['QQ 最近心跳：' + qqTime(qq.last_heartbeat_at)] : []),
@@ -303,7 +303,7 @@
       ...(qq?.last_message_at ? ['QQ 最近入库：' + qqTime(qq.last_message_at)] : []),
       ...(qq?.state === 'disconnected' && qqDisconnect[qq.disconnect_reason] ?
         ['QQ 断线类型：' + qqDisconnect[qq.disconnect_reason]] : []),
-      ...(qq?.disconnected_at ? ['QQ 最近断线：' + qqTime(qq.disconnected_at) + '，断线期间可能漏采，可用文件补齐。'] : []),
+      ...(qq?.disconnected_at ? ['QQ 最近断线：' + qqTime(qq.disconnected_at) + '。如有漏收消息，可在「我的待办 → 导入与采集」用聊天文件补齐。'] : []),
       '消息处理：' + (scheduler?.capture || '状态不可用'),
       '最近错误：' + (scheduler?.last_error || '暂无'),
     ].map(line => '<p>' + esc(line) + '</p>').join('') +

@@ -54,7 +54,7 @@ def _context_candidate(mention: dict[str, Any], nearby: list[dict[str, Any]]) ->
             action = bool(_ACTION.search(text) or _REPLY_REQUEST.search(text))
             return ({'status': 'pending' if action else 'review', 'category': category,
                      'deadline': deadline_of(text, message.get('sent_at') or ''),
-                     'reason': '结合相邻消息识别，请核对上下文'}, message)
+                     'reason': '根据相邻消息整理，请核对原文'}, message)
         break
     return None
 
@@ -208,7 +208,7 @@ def classify(message: dict[str, Any]) -> dict[str, Any] | None:
         category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), '其他')
         return {'status': 'pending' if action else 'review', 'category': category,
                 'deadline': deadline_of(text, message.get('sent_at') or ''),
-                'reason': '工作联系人发来行动事项' if action else '工作联系人消息，行动不明确'}
+                'reason': '来自工作联系人的待办消息' if action else '工作联系人消息，行动不明确'}
     names = (personal.MY_NICKNAMES or personal.MY_SENDER_NAMES) | ({personal.MY_REALNAME} if personal.MY_REALNAME else set())
     if personal.MY_SHORTNAME:
         names.add(personal.MY_SHORTNAME)
@@ -237,7 +237,7 @@ def classify(message: dict[str, Any]) -> dict[str, Any] | None:
     category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), "其他")
     return {"status": status, "category": category,
             "deadline": deadline_of(text, message.get("sent_at") or ""),
-            "reason": "明确指向本人并包含行动" if status == "pending" else "提及本人，行动不明确"}
+            "reason": "明确指向你且包含具体行动" if status == "pending" else "提及本人，行动不明确"}
 
 
 def init_store(conn: sqlite3.Connection, baseline: bool = True) -> None:
@@ -465,7 +465,7 @@ def send_due_alerts(conn: sqlite3.Connection, send_mail, send_desktop,
         try:
             outcome = send(event)
             success = bool(outcome.get('sent')) if isinstance(outcome, dict) else bool(outcome)
-            return success, None if success else '请求未被接受'
+            return success, None if success else '通知发送请求未被接受'
         except Exception as exc:
             return False, type(exc).__name__
 
@@ -474,7 +474,7 @@ def send_due_alerts(conn: sqlite3.Connection, send_mail, send_desktop,
         if deadline is None or not timedelta(0) <= deadline - now <= timedelta(hours=24):
             continue
         result['urgent'] += 1
-        event = dict(task, urgent_reason='24小时内截止')
+        event = dict(task, urgent_reason='24 小时内截止')
         if send_mail is not None and pending(task, 'mail'):
             success, error = deliver(send_mail, event)
             record(task, 'mail', success, error)
@@ -484,9 +484,9 @@ def send_due_alerts(conn: sqlite3.Connection, send_mail, send_desktop,
 
     if pending_desktop:
         if len(pending_desktop) == 1:
-            event = dict(pending_desktop[0], urgent_reason='24小时内截止')
+            event = dict(pending_desktop[0], urgent_reason='24 小时内截止')
         else:
-            event = {'conversation_name': '多条任务', 'text': f"有 {len(pending_desktop)} 项任务在24小时内截止，请打开工作台查看。", 'deadline': ''}
+            event = {'conversation_name': '多条待办事项', 'text': f"有 {len(pending_desktop)} 项待办在 24 小时内截止，请打开工作台查看。", 'deadline': ''}
         success, error = deliver(send_desktop, event)
         for task in pending_desktop:
             record(task, 'desktop', success, error)

@@ -50,7 +50,7 @@ def external_instance(node):
         capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
     )
     if result.returncode not in (0, 10):
-        raise OSError("Could not inspect NapCat process ownership")
+        raise OSError("无法核对 NapCat 进程归属。")
     return result.returncode == 10
 
 

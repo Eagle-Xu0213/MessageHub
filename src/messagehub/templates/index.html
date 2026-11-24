@@ -48,10 +48,10 @@
               群内发言名
               <input name="sender_names" placeholder="多个名字用逗号分开">
             </label>
-            <button class="btn primary">保存名字</button>
+            <button class="btn primary">保存称呼</button>
           </form>
           <a class="btn primary" id="setup-link" hidden></a>
-          <p><button class="link" id="open-import">使用文件导入</button></p>
+          <p><button class="link" id="open-import">手动导入文件</button></p>
         </section>
 
         <div class="workbench-bento">
@@ -68,14 +68,14 @@
 
           <section class="bento-card bento-calendar" aria-labelledby="calendar-title">
             <div class="panel-head">
-              <h2 id="calendar-title">任务日历</h2>
+              <h2 id="calendar-title">待办日历</h2>
               <div class="calendar-nav">
                 <button type="button" class="btn" id="calendar-prev" aria-label="上个月">‹</button>
                 <button type="button" class="btn" id="calendar-next" aria-label="下个月">›</button>
               </div>
             </div>
             <p id="calendar-month" class="calendar-month" aria-live="polite"></p>
-            <div id="calendar-days" class="calendar-days" aria-label="选择截止日期"></div>
+            <div id="calendar-days" class="calendar-days" aria-label="选择日期查看当天截止的事项"></div>
             <div id="calendar-results" class="calendar-results" aria-live="polite"></div>
           </section>
 
@@ -89,13 +89,13 @@
                 <strong id="review-count">—</strong><span>待确认</span>
               </button>
             </div>
-            <p id="soon-count">正在加载</p>
+            <p id="soon-count">正在加载…</p>
           </section>
 
           <section class="bento-card bento-capture" aria-labelledby="capture-heading">
             <h2 id="capture-heading">消息采集</h2>
             <strong id="capture-title">待检查</strong>
-            <p id="capture-time">正在检查</p>
+            <p id="capture-time">正在检查…</p>
             <button class="link" data-page="system" id="capture-bar">查看运行状态</button>
           </section>
 
@@ -164,20 +164,20 @@
               <option value="dark">深色</option>
             </select>
           </label>
-          <p class="muted">深浅两套主题，统一使用低饱和配色。</p>
+          <p class="muted">可选择浅色、深色或跟随系统。</p>
         </div>
 
         <!-- Scope -->
         <div class="glass panel settings">
           <h2>采集与范围</h2>
-          <p class="muted">选择需要关注的会话，并管理导入。</p>
+          <p class="muted">选择要关注的微信与 QQ 会话。</p>
           <a href="/select">管理检测范围 →</a>
         </div>
 
         <!-- Email notifications -->
         <div class="glass panel settings">
           <h2>邮件通知</h2>
-          <p class="muted">启用后，24 小时内截止的待办提醒和每小时汇总会发送到指定邮箱，内容可能包含事项正文和会话来源。</p>
+          <p class="muted">启用后，按下方设置向指定邮箱发送截止提醒和每小时待办汇总。</p>
           <form id="email-settings" autocomplete="off">
             <fieldset id="email-fields" disabled>
               <p class="muted">邮件可能包含事项正文、会话来源和截止时间。</p>
@@ -313,9 +313,10 @@ const category=x=>({'会议安排':'会议活动','沟通回复':'沟通确认'}
 const bare=x=>/^@[^\s@，,。:：！!？?]+[\s，,。:：！!？?]*$/.test((x.text||'').trim());
 const title=x=>(x.title||(bare(x)?x.context_summary:null)||x.text||'未命名事项').trim().replace(/\s+/g,' ').slice(0,90);
 const label={pending:'待处理',accepted:'已接受',in_progress:'进行中',review:'待确认',notice:'重要通知',completed:'已完成',ignored:'已忽略',dismissed:'已忽略',archived:'已归档'};
+const reasonLabel = reason => reason === '提及本人，行动不明确' ? '提及了你，尚不明确需要做什么' : reason;
 const sourceLabels = {wechat: '微信', qq: 'QQ', manual: '手动'};
 $('#source-filter').addEventListener('change', render);
-function render(){const platform=$('#source-filter').value;const visibleItems=platform?items.filter(x=>x.source_platform===platform):items;const metrics=[['overdue','已逾期',visibleItems.filter(overdue).length],['soon','即将截止',visibleItems.filter(soon).length],['pending','待处理',visibleItems.filter(active).length],['review','待确认',visibleItems.filter(x=>x.status==='review').length],['notice','重要通知',visibleItems.filter(x=>x.status==='notice').length]];$('#stats').innerHTML=metrics.map(([id,name,n])=>`<button class="stat ${view===id?'active':''} ${id==='overdue'||id==='soon'?'urgent':''}" data-view="${id}"><strong>${n}</strong>${name}</button>`).join('');const tabs=[['pending','待处理'],['review','待确认'],['notice','重要通知'],['history','历史记录']];$('#tabs').innerHTML=tabs.map(([id,n])=>`<button data-view="${id}" class="${view===id?'active':''}">${n}</button>`).join('');let list=visibleItems.filter(x=>view==='pending'?active(x):view==='overdue'?overdue(x):view==='soon'?soon(x):view==='history'?['completed','ignored','dismissed','archived'].includes(x.status):x.status===view);list.sort((a,b)=>view==='history'?(b.updated_at||'').localeCompare(a.updated_at||''):(time(a)??Infinity)-(time(b)??Infinity)||b.id-a.id);$('#items').innerHTML=list.length?list.map(x=>{let buttons=active(x)?[['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head"><button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(x.reason)}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'服务尚未更新，请重启 MessageHub':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.text?esc(x.text):'手动创建的事项'}\n\n来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(x.reason)}${contexts[x.id]?`<br><br><strong>附近聊天记录</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文读取失败，请收起后重新打开。':x.message_id?'<br><br>正在读取上下文…':''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`}).join(''):'<div class="empty">这里暂时没有事项</div>';}
+function render(){const platform=$('#source-filter').value;const visibleItems=platform?items.filter(x=>x.source_platform===platform):items;const metrics=[['overdue','已逾期',visibleItems.filter(overdue).length],['soon','即将截止',visibleItems.filter(soon).length],['pending','待处理',visibleItems.filter(active).length],['review','待确认',visibleItems.filter(x=>x.status==='review').length],['notice','重要通知',visibleItems.filter(x=>x.status==='notice').length]];$('#stats').innerHTML=metrics.map(([id,name,n])=>`<button class="stat ${view===id?'active':''} ${id==='overdue'||id==='soon'?'urgent':''}" data-view="${id}"><strong>${n}</strong>${name}</button>`).join('');const tabs=[['pending','待处理'],['review','待确认'],['notice','重要通知'],['history','历史记录']];$('#tabs').innerHTML=tabs.map(([id,n])=>`<button data-view="${id}" class="${view===id?'active':''}">${n}</button>`).join('');let list=visibleItems.filter(x=>view==='pending'?active(x):view==='overdue'?overdue(x):view==='soon'?soon(x):view==='history'?['completed','ignored','dismissed','archived'].includes(x.status):x.status===view);list.sort((a,b)=>view==='history'?(b.updated_at||'').localeCompare(a.updated_at||''):(time(a)??Infinity)-(time(b)??Infinity)||b.id-a.id);$('#items').innerHTML=list.length?list.map(x=>{let buttons=active(x)?[['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head"><button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.text?esc(x.text):'手动创建的事项'}\n\n来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?`<br><br><strong>附近聊天记录</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':x.message_id?'<br><br>正在读取上下文…':''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`}).join(''):'<div class="empty">当前列表暂无事项</div>';}
 let taskRequest = 0;
 let taskUpdates = 0;
 function taskRefreshBlocked() {
@@ -375,7 +376,7 @@ async function changeStatus(item, status) {
       taskFeedback('已撤销。');
     } catch (error) {
       await load();
-      taskFeedback('撤销未生效。' + error.message);
+      taskFeedback('撤销失败，请查看列表中的最新状态。' + error.message);
     } finally {
       $('#undo-action').disabled = false;
       document.dispatchEvent(new Event('workbench-refresh'));
@@ -383,11 +384,11 @@ async function changeStatus(item, status) {
   });
 }
 
-document.addEventListener('click',async e=>{const v=e.target.closest('[data-view]');if(v){view=v.dataset.view;render();return}const expand=e.target.closest('[data-expand]');if(expand){let id=Number(expand.dataset.expand);expanded=expanded===id?null:id;render();if(expanded&&!contexts[id]){try{const r=await fetch(`/api/workbench/items/${id}/context`);if(!r.ok)throw Error(r.status===404?'当前服务版本较旧，请重启 MessageHub。':'聊天上下文读取失败，请稍后重试。');contexts[id]=(await r.json()).messages;render()}catch(err){contexts[id]=null;render();$('#error').textContent=err.message||'聊天上下文读取失败，请稍后重试。'}}return}const b=e.target.closest('[data-action]');if(!b)return;const x=items.find(x=>x.id===Number(b.dataset.id));if(b.dataset.action==='edit'){openEditor(x);return}let status=b.dataset.action;if(status==='restore')status=x.status==='archived'?'notice':x.status==='ignored'?'review':'pending';b.disabled=true;try{await changeStatus(x,status)}catch(err){await load();$('#error').textContent=err.message}finally{b.disabled=false}});
+document.addEventListener('click',async e=>{const v=e.target.closest('[data-view]');if(v){view=v.dataset.view;render();return}const expand=e.target.closest('[data-expand]');if(expand){let id=Number(expand.dataset.expand);expanded=expanded===id?null:id;render();if(expanded&&!contexts[id]){try{const r=await fetch(`/api/workbench/items/${id}/context`);if(!r.ok)throw Error(r.status===404?'当前运行的服务版本较旧，请重启 MessageHub 后重试。':'聊天上下文加载失败，请稍后重试。');contexts[id]=(await r.json()).messages;render()}catch(err){contexts[id]=null;render();$('#error').textContent=err.message||'聊天上下文加载失败，请稍后重试。'}}return}const b=e.target.closest('[data-action]');if(!b)return;const x=items.find(x=>x.id===Number(b.dataset.id));if(b.dataset.action==='edit'){openEditor(x);return}let status=b.dataset.action;if(status==='restore')status=x.status==='archived'?'notice':x.status==='ignored'?'review':'pending';b.disabled=true;try{await changeStatus(x,status)}catch(err){await load();$('#error').textContent=err.message}finally{b.disabled=false}});
 function openEditor(x){editing=x?.id??null;$('#form-title').textContent=x?'编辑事项':'新建事项';const f=$('#form');f.elements.title.value=x?(x.title||title(x)):'';f.elements.category.value=x?category(x.category):'其他';f.elements.deadline.value=x?.deadline?x.deadline.slice(0,16):'';$('#form-error').textContent='';$('#editor').showModal()}$('#new-item').onclick=()=>openEditor();$('#cancel').onclick=()=>$('#editor').close();$('#form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,data={title:f.elements.title.value,category:f.elements.category.value,deadline:f.elements.deadline.value||null};try{if(editing)await update(editing,data);else{const r=await fetch('/api/workbench/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok)throw Error((await r.json()).detail||'创建失败');view='pending';$('#source-filter').value='';await load()}$('#editor').close();if(!editing){document.querySelector('.side-nav [data-page="tasks"]').click()}}catch(err){$('#form-error').textContent=err.message}};
 async function status(){try{const r=await fetch('/api/personal-tasks/status');if(!r.ok)throw Error();const s=await r.json();$('#status').textContent='后台：'+(s.capture||'等待启动')+(s.last_error?' · 处理异常：'+s.last_error:'')}catch{$('#status').textContent='后台状态暂不可用'}}
-$('#upload').onclick=async()=>{const f=$('#file').files[0];if(!f){$('#import-status').textContent='请先选择文件';return}const data=new FormData();data.append('file',f);try{let r=await fetch('/api/import',{method:'POST',body:data});if(!r.ok)throw Error();let d=await r.json();$('#import-status').textContent=`导入完成：新增 ${d.inserted} 条，重复 ${d.duplicate} 条`;await load()}catch{$('#import-status').textContent='导入失败'}};$('#scan').onclick=async()=>{try{let r=await fetch('/api/scan',{method:'POST'});if(!r.ok)throw Error();let d=await r.json();$('#import-status').textContent=`扫描完成：新增 ${d.new} 条消息`;await load()}catch{$('#import-status').textContent='扫描失败'}};
-async function checkUpdate(){try{const r=await fetch('/api/version');if(!r.ok)return;const d=await r.json();if(!d.has_update){$('#update-banner').style.display='none';return}$('#update-banner').style.display='block';$('#update-message').textContent=d.relation==='diverged'?'本地版本与远程存在分叉，请先处理本地版本。':'发现新版本 '+(d.upstream_version||'');$('#update-button').style.display=d.can_update?'inline-block':'none';if(!d.can_update&&d.relation!=='diverged')$('#update-message').textContent+='，请按安装说明更新。'}catch{}}
+$('#upload').onclick=async()=>{const f=$('#file').files[0];if(!f){$('#import-status').textContent='请先选择文件';return}const data=new FormData();data.append('file',f);try{let r=await fetch('/api/import',{method:'POST',body:data});if(!r.ok)throw Error();let d=await r.json();$('#import-status').textContent=`导入完成：新增 ${d.inserted} 条，重复 ${d.duplicate} 条`;await load()}catch{$('#import-status').textContent='导入失败，请确认文件格式后重试。'}};$('#scan').onclick=async()=>{try{let r=await fetch('/api/scan',{method:'POST'});if(!r.ok)throw Error();let d=await r.json();$('#import-status').textContent=`扫描完成：新增 ${d.new} 条消息`;await load()}catch{$('#import-status').textContent='目录扫描失败，请检查服务状态后重试。'}};
+async function checkUpdate(){try{const r=await fetch('/api/version');if(!r.ok)return;const d=await r.json();if(!d.has_update){$('#update-banner').style.display='none';return}$('#update-banner').style.display='block';$('#update-message').textContent=d.relation==='diverged'?'本地提交与官方版本的历史存在差异，请先核对本地提交再更新。':'发现新版本 '+(d.upstream_version||'');$('#update-button').style.display=d.can_update?'inline-block':'none';if(!d.can_update&&d.relation!=='diverged')$('#update-message').textContent+='，请按安装说明更新。'}catch{}}
 async function pollUpdate(){try{const r=await fetch('/api/update/status');if(!r.ok)throw Error();const d=await r.json();$('#update-message').textContent=d.message||'正在更新…';if(d.state==='error'){ $('#update-button').disabled=false;return }if(d.state==='done'){location.reload();return}}catch{$('#update-message').textContent='服务正在重启，请稍候…'}setTimeout(pollUpdate,2000)}
 $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{const r=await fetch('/api/update',{method:'POST'});const d=await r.json();if(!r.ok)throw Error(d.detail||'无法启动更新');pollUpdate()}catch(e){$('#update-message').textContent=e.message;$('#update-button').disabled=false}};
 (async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);

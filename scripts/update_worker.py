@@ -44,7 +44,7 @@ def apply_update():
     report('updating', '正在检查并下载更新')
     git('fetch', 'origin', 'main')
     if git('merge-base', '--is-ancestor', 'HEAD', 'FETCH_HEAD', check=False).returncode:
-        raise RuntimeError('本地版本与远程存在分叉，已停止更新')
+        raise RuntimeError('本地提交与官方版本的历史存在差异，已停止自动更新。请先核对本地提交。')
     git('merge', '--ff-only', 'FETCH_HEAD')
     report('updating', '正在检查依赖')
     proc = subprocess.run([sys.executable, '-m', 'pip', 'install', '-e', '.'], cwd=ROOT,
@@ -76,7 +76,7 @@ def main():
                     report('done', '更新已完成，服务已启动')
                     return
             time.sleep(.1)
-        raise RuntimeError('更新已安装，但服务启动超时；请手动启动 MessageHub')
+        raise RuntimeError('更新已安装，但服务重启超时。请双击「启动 MessageHub.bat」。')
     except Exception as exc:
         report('error', str(exc) if isinstance(exc, RuntimeError) else '更新失败，请检查 Git 和网络')
 

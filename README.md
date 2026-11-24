@@ -12,7 +12,7 @@
 
 ### 自己安装
 
-1. Windows 10 / 11 安装 [Python 3.11+](https://www.python.org/downloads/) 和 [Git](https://git-scm.com/download/win)，克隆本仓库后双击 `setup.bat`。也可以直接在项目目录创建虚拟环境并执行 `pip install -e .`。其他系统可以使用手动导入。
+1. Windows 10 / 11 安装 [Python 3.11+](https://www.python.org/downloads/) 和 [Git](https://git-scm.com/download/win)，克隆本仓库后双击 `setup.bat`。也可以直接在项目目录创建虚拟环境并执行 `pip install -e .`。macOS 和 Linux 可使用手动导入。
 2. **微信自动采集**需要微信桌面版 4.x。保持微信登录，在项目目录运行下面的命令。它会准备 Moect 源码和依赖，并注册本机计划任务。这一步仅对需要微信自动采集的人适用。
    ```powershell
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
@@ -21,9 +21,9 @@
 
 ### QQ 实时采集
 
-MessageHub 通过本机 OneBot 11 接收已登录个人 QQ 的新消息。已有兼容引擎可以直接复用。没有引擎时，可自行获取并解压 [SnowLuma Windows x64 完整包](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2)，首次启动时请自行阅读许可和隐私条款，并完成 QQ 登录。SnowLuma 的专有组件有自动部署限制，MessageHub 安装包不携带它。 [SnowLuma 发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)
+MessageHub 通过本机 OneBot 11 接收已登录个人 QQ 的新消息。已有兼容引擎可以直接复用。没有引擎时，可自行获取并解压 [SnowLuma Windows x64 完整包](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2)，首次启动时请自行阅读许可和隐私条款，并完成 QQ 登录。SnowLuma 的专有组件有自动部署限制，需要独立安装。 [SnowLuma 发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)
 
-Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令牌。自行安装时，把示例账号和路径替换成自己的。然后在 SnowLuma 本机管理页接入 QQ，回到 [检测范围 → QQ](http://127.0.0.1:8000/select) 选择会话。停用或切换引擎时保留原配置，同时只运行一个采集引擎。
+Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令牌。自行安装时，把示例账号和路径替换成自己的。然后在 SnowLuma 本机管理页接入 QQ，回到 [检测范围 → QQ](http://127.0.0.1:8000/select) 选择会话。切换引擎时请保留原配置，同一账号只连接一个引擎，避免登录冲突。
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\configure_qq.py --account 123456789 --snowluma-root "D:\你的SnowLuma目录"
@@ -35,9 +35,9 @@ Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令�
 
 - [工作台](http://127.0.0.1:8000/)显示待办、待确认和截止日历，按来源筛选，点开就能查原文。
 - [检测范围](http://127.0.0.1:8000/select)分别管理微信和 QQ，每条会话直接选「工作」「混合」或「未关注」。QQ 自动接收只保存已关注会话启用后的新消息。
-- [运行状态](http://127.0.0.1:8000/#system)查看微信最近同步和 QQ 连接。微信以分钟为周期，QQ 通过消息事件实时接收。QQ 断线期间可用文件补齐。
-- **手动导入**在「我的待办 → 导入与采集」，支持 JSONL、JSON、CSV、TXT，或扫描项目的 `imports/`。
-- **更新**使用 Git 克隆的 Windows 安装可在工作台一键更新。本地有未提交改动或分叉时，更新会停止。ZIP 安装需手动升级。
+- [运行状态](http://127.0.0.1:8000/#system)查看微信最近同步和 QQ 连接。微信按分钟级间隔同步，QQ 通过消息事件实时接收。QQ 断线期间可用文件补齐。
+- 在「我的待办 → 导入与采集」，支持 JSONL、JSON、CSV、TXT，或扫描项目的 `imports/`。
+- Windows 用户通过 Git 克隆安装后，可在工作台一键更新。本地有未提交改动或分叉时，更新会停止。ZIP 安装需手动升级。
 
 ## 可选配置与隐私
 

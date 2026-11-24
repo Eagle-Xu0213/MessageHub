@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $target = Join-Path $project '.venv\Scripts\pythonw.exe'
-if (-not (Test-Path -LiteralPath $target)) { throw 'Project pythonw.exe is missing.' }
+if (-not (Test-Path -LiteralPath $target)) { throw '未找到项目虚拟环境里的 pythonw.exe，请先安装 MessageHub。' }
 $programs = [Environment]::GetFolderPath('Programs')
 $link = Join-Path $programs 'MessageHub Notifications.lnk'
 if (-not (Test-Path -LiteralPath $link)) {
@@ -46,4 +46,4 @@ public static class ToastShortcut {
 }
 '@
 [ToastShortcut]::SetId($link, 'MessageHub')
-Write-Host 'MessageHub notification shortcut registered for the current user.'
+Write-Host '已为当前用户注册 MessageHub 桌面通知快捷方式。'

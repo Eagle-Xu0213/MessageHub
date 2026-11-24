@@ -95,13 +95,13 @@
 
     <section class="scope-panel" aria-labelledby="platformTitle">
       <div class="scope-controls">
-        <div class="note" id="snapWarn" hidden>微信会话清单还没同步。请保持微信登录，完成首次采集后刷新本页。</div>
+        <div class="note" id="snapWarn" hidden>微信会话列表尚未同步，请保持微信登录，等待首次同步完成。</div>
         <div class="scope-summary">
           <div>
             <h2 id="platformTitle">微信会话</h2>
             <div class="scope-count">已关注 <strong id="follow-count">0</strong><span id="countInfo"></span></div>
           </div>
-          <button type="button" class="primary" id="saveBtn" disabled>保存微信范围</button>
+          <button type="button" class="primary" id="saveBtn" disabled>保存微信关注范围</button>
         </div>
         <span id="dirtyHint" role="status"></span>
         <div class="select-toolbar">
@@ -112,14 +112,14 @@
             <option value="contact">联系人</option>
           </select>
           <select id="levelFilter" aria-label="关注状态">
-            <option value="all">全部分级</option>
+            <option value="all">全部状态</option>
             <option value="followed">已关注</option>
             <option value="work">工作</option>
             <option value="watch">混合</option>
             <option value="excluded">未关注</option>
           </select>
         </div>
-        <p class="scope-hint" id="qqNote" hidden>仅采集已关注 QQ 会话的新消息。</p>
+        <p class="scope-hint" id="qqNote" hidden>仅保存关注后收到的 QQ 新消息。</p>
       </div>
       <div id="list" class="scope-list" tabindex="0" aria-label="会话列表">
         <div class="empty">正在加载会话…</div>
@@ -179,14 +179,14 @@ function render() {
     const control = `<div class="scope-levels" role="radiogroup" aria-label="${escapeHtml(row.name)}分级">${levels.map(level =>
       `<label><input type="radio" name="scope-${row.index}" data-row="${row.index}" value="${level}" ${(row.level || 'excluded') === level ? 'checked' : ''}><span>${labels[level]}</span></label>`
     ).join('')}</div>`;
-    return `<div class="conv"><span class="kbadge ${row.kind}">${row.kind === 'group' ? '群' : '人'}</span>
+    return `<div class="conv"><span class="kbadge ${row.kind}">${row.kind === 'group' ? '群' : '私'}</span>
       <div class="nm"><div class="n">${escapeHtml(row.name)} ${row.platform === 'qq' ? `<small>${escapeHtml(row.identity_hint)}${row.kind === 'group' ? ' · ' + escapeHtml(activityLabel(row)) : ''}</small>` : ''}</div></div>
       ${control}</div>`;
   }).join('') : '<div class="empty">' + (rows.length ? '没有匹配的会话' :
     platform === 'qq' ? '暂无 QQ 会话。连接 QQ 采集引擎或导入 QQ 文件后刷新本页。' : '暂无微信会话。') + '</div>';
   $('#countInfo').textContent = ` · 显示 ${visible.length} / ${rows.length} 个会话`;
   $('#platformTitle').textContent = platformNames[platform] + '会话';
-  $('#saveBtn').textContent = '保存' + platformNames[platform] + '范围';
+  $('#saveBtn').textContent = '保存' + platformNames[platform] + '关注范围';
   $('#snapWarn').hidden = platform !== 'wechat' || snapshotAvailable;
   $('#qqNote').hidden = platform !== 'qq';
   $('#dirtyHint').textContent = drafts[platform].message;
@@ -238,7 +238,7 @@ async function load(background = false) {
     });
     render();
   } catch {
-    if (!background) $('#list').textContent = '会话清单加载失败，请刷新重试。';
+    if (!background) $('#list').textContent = '会话列表加载失败，请刷新页面重试。';
   } finally {
     loadingConversations = false;
   }
@@ -254,7 +254,7 @@ $('#list').addEventListener('change', event => {
     if (row.platform === 'qq' ? match === row :
       match.platform !== 'qq' && match.kind === row.kind && match.name === row.name) match.level = level;
   }
-  showMessage(hasChanges() ? '有未保存的修改' : '');
+  showMessage(hasChanges() ? '有未保存的更改' : '');
   render();
   const selected = $('#list').querySelector(`[data-row="${row.index}"]:checked`);
   (selected || $('#levelFilter')).focus({preventScroll: true});
@@ -326,11 +326,11 @@ $('#saveBtn').addEventListener('click', async () => {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(8000),
     });
-    if (!response.ok) throw new Error('保存失败，请重试。');
+    if (!response.ok) throw new Error('保存失败，请稍后重试。');
     lastConversationPayload = '';
     if (payload.group_ids) bindings = payload.group_ids;
     for (const row of platformRows()) row.savedLevel = row.level;
-    showMessage(platform === 'wechat' ? '已保存。等待下一轮微信同步。' : '已保存 QQ 关注范围。');
+    showMessage(platform === 'wechat' ? '微信关注范围已保存，等待下一轮同步。' : '已保存 QQ 关注范围。');
     if (fromSetup && platform === 'wechat' && !conversations.some(row => row.level !== row.savedLevel)) location.assign('/');
   } catch (error) {
     showMessage(error.message);

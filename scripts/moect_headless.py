@@ -121,7 +121,7 @@ def pick_account(svc) -> str | None:
         return None
     accounts = detected.get("accounts") or []
     if not accounts:
-        log("detect 未找到微信账号数据目录")
+        log("未检测到微信账号数据目录，请确认微信已经登录。")
         return None
 
     lib = svc.config.get("library") or {}
@@ -179,7 +179,7 @@ def run_connect() -> bool:
                 log(f"connect 结束: {st} ({prog}%) detail={task.get('detail', '')}")
                 break
         else:
-            log("connect 超时 600s")
+            log("刷新微信快照超时（超过 600 秒），请检查微信客户端。")
             return False
         if st != "completed":
             return False

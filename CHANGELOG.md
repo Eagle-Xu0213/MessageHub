@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-24
+
+- 明确语义化版本的选位规则和版本声明同步流程。
+
 ## [2.1.0] - 2026-11-24
 
 - 统一界面、通知和安装提示，修正已过时的文档说明。
@@ -93,7 +97,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v1.3.0...v2.0.1

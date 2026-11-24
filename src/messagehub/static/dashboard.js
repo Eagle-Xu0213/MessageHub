@@ -58,8 +58,10 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('[data-page]');
     if (!button) return;
+    if (button.matches('a')) event.preventDefault();
     show(button.dataset.page, button.dataset.taskView);
-    history.replaceState(null, '', '#' + button.dataset.page);
+    const destination = '#' + button.dataset.page;
+    if (location.hash !== destination) history.pushState(null, '', destination);
   });
 
   q('#open-import').onclick = () => {
@@ -147,9 +149,66 @@
     return Number.isFinite(time) ? time : Infinity;
   }
 
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  let selectedDay = today;
+  let calendarItems = null;
+  const dayKey = (year, month, date) => [year, String(month).padStart(2, '0'), String(date).padStart(2, '0')].join('-');
+  const deadlineDay = item => item.deadline?.slice(0, 10);
+
+  function renderCalendar() {
+    const [year, month] = selectedDay.split('-').map(Number);
+    const first = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+    const count = new Date(year, month, 0).getDate();
+    const dueByDay = new Map();
+    for (const item of calendarItems || []) {
+      const date = deadlineDay(item);
+      if (date) dueByDay.set(date, (dueByDay.get(date) || 0) + 1);
+    }
+    q('#calendar-month').textContent = year + '年' + month + '月';
+    const grid = q('#calendar-days');
+    const refocus = grid.contains(document.activeElement);
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'].map(d => '<span aria-hidden="true">' + d + '</span>');
+    const days = Array.from({length: count}, (_, index) => {
+      const date = index + 1;
+      const key = dayKey(year, month, date);
+      const due = dueByDay.get(key);
+      return '<button type="button" data-calendar-day="' + key + '" aria-label="' + month + '月' + date +
+        '日' + (due ? '，' + due + '项待办到期' : '') + '" aria-pressed="' + (key === selectedDay) +
+        '" class="' + (due ? 'has-tasks' : '') + '">' + date + '</button>';
+    });
+    grid.innerHTML = weekdays.concat(Array(first).fill('<span aria-hidden="true"></span>'), days).join('');
+    if (refocus) grid.querySelector('[aria-pressed="true"]')?.focus({preventScroll: true});
+    const selected = (calendarItems || []).filter(item => deadlineDay(item) === selectedDay);
+    q('#calendar-results').innerHTML = selected.length
+      ? selected.map(item => '<button type="button" class="link" data-task="' + item.id + '">' + esc(title(item)) + '</button>').join('<br>')
+      : '<p>' + (calendarItems === null ? '正在读取待办截止日期…' : '这一天没有待办到期。') + '</p>';
+  }
+
+  function shiftMonth(offset) {
+    const [year, month, date] = selectedDay.split('-').map(Number);
+    const next = new Date(year, month - 1 + offset, 1);
+    const last = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    selectedDay = dayKey(next.getFullYear(), next.getMonth() + 1, Math.min(date, last));
+    renderCalendar();
+  }
+
+  q('#calendar-prev').onclick = () => shiftMonth(-1);
+  q('#calendar-next').onclick = () => shiftMonth(1);
+  q('#calendar-days').onclick = event => {
+    const button = event.target.closest('[data-calendar-day]');
+    if (!button) return;
+    selectedDay = button.dataset.calendarDay;
+    renderCalendar();
+  };
+  renderCalendar();
+
   function renderHomeTasks(data, phase) {
     const now = Date.now();
     const list = data.items.filter(active).sort((a, b) => deadline(a) - deadline(b) || b.id - a.id);
+    calendarItems = list;
+    renderCalendar();
     const isSoon = item => deadline(item) >= now && deadline(item) <= now + day;
     q('#pending-count').textContent = list.length;
     q('#soon-count').textContent = list.filter(isSoon).length + ' 项即将到期';
@@ -163,7 +222,7 @@
       const time = item.deadline ? '截止 ' + item.deadline.replace('T', ' ').slice(0, 16) : '无截止时间';
       return '<div class="home-task"><button class="check" data-complete="' + item.id +
         '" aria-label="完成事项"></button><button class="task-open" data-task="' + item.id + '">' +
-        esc(title(item)) + '<small>' + esc(due + time + ' · ' + (item.conversation_name || '手动创建')) +
+        esc(title(item)) + '<small>' + esc(due + time + ' · ' + ((item.source_platform === 'qq' ? 'QQ · ' : item.source_platform === 'wechat' ? '微信 · ' : '') + (item.conversation_name || '手动创建'))) +
         '</small></button><span aria-hidden="true">›</span></div>';
     }).join('');
   }
@@ -174,10 +233,11 @@
     if (request !== homeRequest) return;
     q('#capture-title').textContent = captureLabel(state);
     q('#capture-time').textContent = syncTime(state);
-    q('#capture-bar').textContent = captureLabel(state) + ' · ' + syncTime(state) + ' ›';
+    q('#capture-bar').textContent = '查看运行状态 →';
     showSetup(state);
     if (result) renderHomeTasks(result, state?.phase);
     else {
+      q('#calendar-results').textContent = '截止日期加载失败，请稍后重试。';
       q('#home-tasks').textContent = '待办加载失败，请刷新重试。';
       q('#pending-count').textContent = '—';
       q('#review-count').textContent = '—';
@@ -201,7 +261,7 @@
         await home();
       } else {
         show('tasks', 'pending');
-        history.replaceState(null, '', '#task-' + id);
+        history.pushState(null, '', '#task-' + id);
         q('[data-expand="' + id + '"]')?.click();
         q('#task-' + id)?.scrollIntoView({block: 'center'});
       }
@@ -217,18 +277,39 @@
   });
 
   async function system() {
-    const [health, scheduler, state] = await Promise.all([
+    const [health, scheduler, state, qq] = await Promise.all([
       get('/api/health').catch(() => null),
       get('/api/personal-tasks/status').catch(() => null),
       capture(),
+      get('/api/qq/status').catch(() => null),
     ]);
+    const qqLabels = {disabled: '未启用', stopped: '等待 QQ 引擎连接', waiting_login: '等待 QQ 登录',
+      waiting_handshake: '等待 OneBot 连接', restarting: 'QQ 引擎正在重启', connected: '已连接', disconnected: '已断线'};
+    const qqTime = timestamp => new Date(timestamp).toLocaleString();
+    const qqDisconnect = {peer_closed: 'QQ 引擎关闭连接', transport_lost: '连接意外中断',
+      config_changed: '本地配置变更', protocol_error: 'OneBot 协议异常',
+      receiver_stopped: '接收器停止', receiver_error: '接收器异常', heartbeat_timeout: '心跳超时', account_mismatch: 'QQ 账号不匹配'};
+    const qqStages = {login_info: '校验账号', group_list: '读取群聊', friend_list: '读取好友'};
     q('#system-info').innerHTML = [
       '服务：' + (health ? '正常' : '不可用'),
       '采集：' + captureLabel(state),
       syncTime(state),
+      'QQ 实时采集：' + (qqLabels[qq?.state] || '状态不可用'),
+      ...(qq?.state === 'waiting_login' ? ['请在本机 QQ 引擎管理页完成登录。'] : []),
+      ...(qq?.process_issue === 'duplicate_login' ? ['QQ 账号已经在另一个客户端登录。'] : []),
+      ...(qq?.handshake_failure ? ['QQ 上次连接失败：' + (qqStages[qq.handshake_failure.stage] || '连接初始化') +
+        ' · ' + (qqDisconnect[qq.handshake_failure.reason] || '连接未完成')] : []),
+      ...(qq?.last_heartbeat_at ? ['QQ 最近心跳：' + qqTime(qq.last_heartbeat_at)] : []),
+      ...(qq?.process_exited_at && qq.engine !== 'snowluma' ? ['QQ 引擎最近退出：' + qqTime(qq.process_exited_at) + '，退出码 ' + qq.process_exit_code] : []),
+      ...(qq?.last_message_at ? ['QQ 最近入库：' + qqTime(qq.last_message_at)] : []),
+      ...(qq?.state === 'disconnected' && qqDisconnect[qq.disconnect_reason] ?
+        ['QQ 断线类型：' + qqDisconnect[qq.disconnect_reason]] : []),
+      ...(qq?.disconnected_at ? ['QQ 最近断线：' + qqTime(qq.disconnected_at) + '，断线期间可能漏采，可用文件补齐。'] : []),
       '消息处理：' + (scheduler?.capture || '状态不可用'),
       '最近错误：' + (scheduler?.last_error || '暂无'),
-    ].map(line => '<p>' + esc(line) + '</p>').join('');
+    ].map(line => '<p>' + esc(line) + '</p>').join('') +
+      (qq?.engine === 'snowluma' ? '<p><a href="http://127.0.0.1:5099/">打开本机 SnowLuma 管理页</a></p>' :
+        qq?.state === 'waiting_login' ? '<p><a href="http://127.0.0.1:6099/">打开本机 NapCat 管理页</a></p>' : '');
   }
 
   q('#search-form').onsubmit = async event => {
@@ -256,7 +337,19 @@
   }
   showHash();
   window.addEventListener('hashchange', showHash);
-  setInterval(() => {
-    if (page === 'home' && !document.hidden && !q('#identity-form').contains(document.activeElement)) home();
-  }, 15000);
+  let refreshing = false;
+  async function refreshVisiblePage() {
+    if (document.hidden || refreshing || q('#editor').open) return;
+    refreshing = true;
+    try {
+      if (page === 'home' && !q('#identity-form').contains(document.activeElement)) await home();
+      if (page === 'tasks') await Promise.all([load({background: true}), status()]);
+      if (page === 'system') await system();
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  setInterval(refreshVisiblePage, 15000);
+  document.addEventListener('visibilitychange', refreshVisiblePage);
 })();

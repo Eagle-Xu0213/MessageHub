@@ -296,6 +296,9 @@ class UIASource:
         details: List[Dict[str, Any]] = []
         structures: List[Dict[str, Any]] = []
         for info in self._find_chat_windows():
+            if info["platform"] == "qq":
+                # The current QQ reader has no verified message IDs or sender identities.
+                continue
             chat = info["chat_name"] or ""
             # 微信主窗口标题固定为「微信」且 4.x 未在 UIA 暴露会话头，
             # 此时无法确知群名，用占位名并明确标记，绝不猜测。

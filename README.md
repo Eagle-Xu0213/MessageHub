@@ -1,83 +1,48 @@
 # MessageHub
 
-把微信里的工作事项整理到本机浏览器中，方便查看、确认和处理。
+把微信和 QQ 里需要处理的工作事项汇总到本机工作台。查看待办、截止日历和原文，完成、忽略或撤销都在同一个页面。
 
-MessageHub 定期读取已登录的 Windows 微信桌面版，筛选你关注的会话，把可能需要处理的任务和通知放进工作台。也可以手动导入聊天记录。
+## 最快开始
 
-> 当前自动识别使用本地规则，可能遗漏或误判；重要事项请点开核对原文。微信采集是定期刷新，通常需要几分钟，不保证即时送达。
+把 [仓库链接](https://github.com/Eagle-Xu0213/MessageHub) 发给能操作这台电脑的 Agent，附上一句话就够了。
 
-## 能做什么
+> 帮我在这台电脑安装并打开 MessageHub。我想接入微信和 QQ。
 
-- 在工作台查看待处理、待确认和重要通知，按截止时间查看紧急事项。
-- 点击事项查看来源及附近聊天记录，支持新建、编辑、完成、忽略、归档和恢复。
-- 关注工作群、混合群和指定联系人，从新增消息中筛选可能与工作有关的内容。单独的 @ 会尝试结合相邻消息判断。
-- 符合条件的 24 小时内截止任务尝试发送 Windows 桌面提醒。邮件通知默认关闭，可按需启用。
-- Windows Git 安装版可在工作台收到更新提示并一键更新。
+只想用其中一个平台，或只想导入文件，直接在这句话里说明。Agent 会按 [AGENTS.md](AGENTS.md) 检查和复用现有安装、安装依赖、启动工作台，然后只请你完成必要的登录、QQ 引擎首次设置和会话选择。你也可以只发送链接，Agent 会用一句话确认要接入哪些来源。
 
-## 可选邮件通知
+### 自己安装
 
-打开工作台「设置 → 邮件通知」，填写 SMTP 服务器、SSL 端口（通常为 465）、发件账号、授权码和收件邮箱，勾选启用后保存，即刻生效。取消勾选并保存即可关闭。授权码保存在本机运行目录中，页面不会回显。已有 `.env` 配置会自动载入，首次在页面保存后以页面配置为准。
-
-可分别开启 24 小时内到期的紧急邮件和每小时待办汇总。只有存在待办或待确认事项时才发送每小时汇总。关闭邮件总开关会停止这两类邮件。邮件经由 SMTP 服务发送，可能包含事项正文、会话来源和截止时间。
-
-## 安装前准备
-
-- Windows 10 / 11、[Python 3.11 或更高版本](https://www.python.org/downloads/)和 [Git](https://git-scm.com/download/win)。安装 Python 时勾选 **Add python.exe to PATH**。
-- 自动采集需要微信桌面版 4.x 登录并保持运行，以及足够的磁盘空间。微信明文快照可能超过 1 GB。
-- 如果不使用 Windows 或不需要微信采集，可使用手动导入；下方 Windows 计划任务不适用。
-
-也可以把 [GitHub 项目链接](https://github.com/Eagle-Xu0213/MessageHub)发给能操作本机的 AI Agent，让它读取仓库中的 [AGENTS.md](AGENTS.md) 协助安装。不要把 API 密钥发到公开聊天或 Issue。
-
-## 安装与启动（Windows）
-
-1. 打开 PowerShell，下载项目：
-
-   ```powershell
-   cd "$env:USERPROFILE\Desktop"
-   git clone https://github.com/Eagle-Xu0213/MessageHub.git
-   cd MessageHub
-   ```
-
-2. 双击 `setup.bat`，等待依赖安装完成。
-
-3. 如需自动采集，登录微信桌面版，再在项目目录的 PowerShell 中执行：
-
+1. Windows 10 / 11 安装 [Python 3.11+](https://www.python.org/downloads/) 和 [Git](https://git-scm.com/download/win)，克隆本仓库后双击 `setup.bat`。也可以直接在项目目录创建虚拟环境并执行 `pip install -e .`。其他系统可以使用手动导入。
+2. **微信自动采集**需要微信桌面版 4.x。保持微信登录，在项目目录运行下面的命令。它会准备 Moect 源码和依赖，并注册本机计划任务。这一步仅对需要微信自动采集的人适用。
    ```powershell
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"
    ```
+3. 双击 `启动 MessageHub.bat` 打开 [工作台](http://127.0.0.1:8000/)。按引导填写你在会话中使用的名字，打开「检测范围」选择群和联系人。已有配置会继续使用。
 
-   脚本会下载或查找 Moect 源码、安装采集依赖，并为当前用户注册快照和看门狗计划任务。仅使用手动导入时可跳过此步。
+### QQ 实时采集
 
-4. 双击 `启动 MessageHub.bat`，打开[工作台](http://127.0.0.1:8000/)。按首页提示填写微信昵称或群内发言名、勾选想关注的会话，再等待同步。已有配置会自动带入。只使用手动导入时，可直接点击「使用文件导入」。
+MessageHub 通过本机 OneBot 11 接收已登录个人 QQ 的新消息。已有兼容引擎可以直接复用。没有引擎时，可自行获取并解压 [SnowLuma Windows x64 完整包](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2)，首次启动时请自行阅读许可和隐私条款，并完成 QQ 登录。SnowLuma 的专有组件有自动部署限制，MessageHub 安装包不携带它。 [SnowLuma 发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)
 
-首次启用时以当前时间为基线，不会自动把全部历史聊天变成待办。保持微信登录。工作台显示最近成功时间，保存关注范围后会等到新快照处理完成。若提示同步延迟或失败，按首页入口查看采集状态。
+Agent 可以用下方命令配置已安装的 SnowLuma，无需手动填写令牌。自行安装时，把示例账号和路径替换成自己的。然后在 SnowLuma 本机管理页接入 QQ，回到 [检测范围 → QQ](http://127.0.0.1:8000/select) 选择会话。停用或切换引擎时保留原配置，同时只运行一个采集引擎。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\configure_qq.py --account 123456789 --snowluma-root "D:\你的SnowLuma目录"
+```
+
+已有其他 OneBot 11 兼容引擎时，可以省略 `--snowluma-root` 来准备 MessageHub 接收器。按 [Agent 指南](AGENTS.md) 配置引擎回连。QQ 无法实时连接时，也可以导入 QQ Chat Exporter V5 文件。
 
 ## 日常使用
 
-- **工作台**：[http://127.0.0.1:8000/](http://127.0.0.1:8000/)。首页优先展示逾期和即将到期的事项，并可直达「待确认」。点击事项查看原文。完成或忽略后可立即撤销，也可从历史记录恢复。
-- **检测范围**：[http://127.0.0.1:8000/select](http://127.0.0.1:8000/select)。勾选想关注的会话。新关注默认为「混合」，可在高级设置调整分级。取消关注后已保存的历史仍可查看。
-- **消息流**：[http://127.0.0.1:8000/live](http://127.0.0.1:8000/live)。查看采集状态及近期消息。
-- **手动导入**：在工作台展开“导入与采集”，上传 JSONL、JSON、CSV 或 TXT，或把文件放入 `imports/` 后点击扫描。导入格式不同可能影响发送者和时间信息。
-- **更新**：Git 克隆安装的 Windows 版本可在工作台收到新版本提示并点击“一键更新”。本地有未提交改动或分叉时更新会停止；旧版首次升级到支持此功能的版本仍需先手动更新。ZIP 安装不支持一键更新。
+- [工作台](http://127.0.0.1:8000/)显示待办、待确认和截止日历，按来源筛选，点开就能查原文。
+- [检测范围](http://127.0.0.1:8000/select)分别管理微信和 QQ，每条会话直接选「工作」「混合」或「未关注」。QQ 自动接收只保存已关注会话启用后的新消息。
+- [运行状态](http://127.0.0.1:8000/#system)查看微信最近同步和 QQ 连接。微信以分钟为周期，QQ 通过消息事件实时接收。QQ 断线期间可用文件补齐。
+- **手动导入**在「我的待办 → 导入与采集」，支持 JSONL、JSON、CSV、TXT，或扫描项目的 `imports/`。
+- **更新**使用 Git 克隆的 Windows 安装可在工作台一键更新。本地有未提交改动或分叉时，更新会停止。ZIP 安装需手动升级。
 
-## 可选 AI 配置
+## 可选配置与隐私
 
-如需使用项目中的可选 AI 功能，在本机 `.env` 中填写兼容 OpenAI Chat Completions 的 `LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_API_KEY`。工作台的任务识别和上下文摘要使用本地规则，填写这些值不会改变工作台的识别方式。密钥请留在本机。
+任务识别使用本地规则，可能漏判或误判，重要事项请核对原文。使用任务识别不需要配置 AI 或邮件。需要邮件提醒时，在「设置 → 邮件通知」填写 SMTP 配置并开启；邮件可能包含事项内容、来源和截止时间。可选 AI 功能才会使用本机 `.env` 中的 `LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_API_KEY`，其中部分功能可能尝试 Pollinations 或 LLM7 等备用服务。
 
-## 常见问题
+数据库、微信明文快照和运行配置保存在本机 `runtime/`，个人设置保存在 `config/personal.json`。保护这些文件、`.env` 和 QQ 接收令牌。排查时可查看 `runtime/moect_headless.log`、`runtime/moect_live.log` 和 `runtime/watchdog.log`，分享前请移除个人信息。
 
-**没有事项？** 检查微信是否登录、采集状态、昵称和发言名是否正确，以及会话是否已在检测范围中保存。只有被规则识别出的新增工作信息才会进入工作台，不能据此认定没有遗漏。
-
-**网页打不开或采集没有更新？** 确认服务在运行，检查微信登录状态，并查看 `runtime/moect_headless.log`、`runtime/moect_live.log` 和 `runtime/watchdog.log`。分享日志前遮去聊天内容和个人信息。
-
-**API 配好了，为什么没有 AI 摘要？** 当前工作台仍使用本地规则；API 配置不会自动启用大模型任务识别或验证密钥可用性。
-
-**如何卸载？** 停止服务，移除登录自启项（如曾安装），并在任务计划程序中停用或删除 `MessageHubHeadless`、`MessageHubWatchdog`。确认并备份需要保留的数据后再删除项目目录。
-
-## 隐私与数据
-
-数据库和微信明文快照保存在项目的 `runtime/`，身份及会话配置保存在 `config/personal.json`，密钥保存在 `.env`；请妥善保护，不要公开分享。服务默认只监听本机。微信采集使用独立的 [Moect](https://github.com/mofan6/Moect) 源码，快照及解密凭据均属于敏感数据。
-
-API 一旦被项目的相关功能调用，所需消息、会话名或发送者可能发送给配置的服务；代码中的部分 AI 调用在主服务失败时还可能尝试 Pollinations、LLM7 等第三方备用服务。安装依赖、下载源码和检查更新需要网络。当前工作台自动规则不调用 AI。
-
-本项目采用 [MIT 许可证](LICENSE)；Moect 及其他依赖的许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。问题可提交至 [GitHub Issues](https://github.com/Eagle-Xu0213/MessageHub/issues)，请先移除密钥和私人内容。
+卸载前先停止服务、停用本项目的自启及计划任务，并备份要保留的数据。项目采用 [MIT 许可证](LICENSE)，第三方组件另有许可，见 [第三方组件声明](THIRD_PARTY_NOTICES.md)。反馈请提交到 [GitHub Issues](https://github.com/Eagle-Xu0213/MessageHub/issues)。

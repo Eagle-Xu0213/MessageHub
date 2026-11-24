@@ -1,124 +1,132 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>检测范围管理 · MessageHub</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 28px 20px 60px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: #f5f7fa; color: #1f2733; line-height: 1.6;
-  }
-  .wrap { max-width: 1080px; margin: 0 auto; }
-  .topnav { display: flex; gap: 14px; margin-bottom: 18px; font-size: 14px; }
-  .topnav a { color: #1668dc; text-decoration: none; }
-  .topnav a:hover { text-decoration: underline; }
-  .topnav a.cur { font-weight: 650; color: #1f2733; }
-  h1 { font-size: 25px; margin: 0 0 6px; }
-  .sub { color: #6b7785; font-size: 14px; margin-bottom: 24px; }
-  .card {
-    background: #fff; border: 1px solid #e3e8ef; border-radius: 12px;
-    padding: 20px 22px; margin-bottom: 18px;
-    box-shadow: 0 1px 3px rgba(20,40,80,.04);
-  }
-  .card h2 { font-size: 16px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
-  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
-  input[type=text] {
-    border: 1px solid #d5dde8; border-radius: 7px; padding: 7px 10px;
-    font-size: 13px; font-family: inherit; outline: none; background: #fff; color: #1f2733;
-  }
-  input[type=text]:focus { border-color: #1668dc; }
-  #search { width: 260px; }
-  select {
-    border: 1px solid #d5dde8; border-radius: 7px; padding: 7px 10px;
-    font-size: 13px; font-family: inherit; background: #fff; color: #1f2733; outline: none;
-  }
-  button {
-    border: 1px solid #d5dde8; background: #fff; color: #26313f;
-    border-radius: 7px; padding: 7px 15px; font-size: 13px; cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover { border-color: #1668dc; color: #1668dc; }
-  button.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
-  button.primary:hover { background: #1158bd; color: #fff; }
-  button:disabled { opacity: .55; cursor: not-allowed; }
-  .toolbar .spacer { flex: 1; }
-  .hint { font-size: 12.5px; color: #7a8698; }
-  #list { max-height: 560px; overflow-y: auto; border: 1px solid #e8edf4; border-radius: 9px; }
-  .conv {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-bottom: 1px dashed #e6ebf2; font-size: 13.5px;
-  }
-  .conv:last-child { border-bottom: none; }
-  .conv:hover { background: #f7fafd; }
-  .conv .nm { flex: 1; min-width: 0; }
-  .conv .nm .n { font-weight: 600; word-break: break-all; }
-  .conv .nm .meta { font-size: 12px; color: #7a8698; margin-top: 1px; }
-  .conv .nm .aireason { font-size: 12px; color: #b06a00; margin-top: 2px; }
-  .conv .nm .aireason.off { color: #98a3b3; }
-  .kbadge {
-    display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11.5px;
-    background: #eef3fb; color: #34527d; margin-right: 4px; flex: none;
-  }
-  .kbadge.contact { background: #f3eefb; color: #6b3fa0; }
-  .savebar {
-    display: flex; align-items: center; gap: 14px; margin-top: 14px;
-    position: sticky; bottom: 0; background: #fff; padding: 10px 4px;
-    border-top: 1px solid #e8edf4;
-  }
-  .savebar .summary { font-size: 13px; color: #4a5768; }
-  .savebar .summary b { color: #1668dc; }
-  .empty { color: #98a3b3; font-size: 13px; text-align: center; padding: 60px 0; }
-  .note {
-    background: #fffbe8; border: 1px solid #f5e2a8; border-radius: 9px;
-    padding: 13px 16px; font-size: 13px; color: #6b5518; margin-bottom: 18px;
-  }
-</style>
-<link rel="stylesheet" href="/static/glass.css">
-<script src="/static/ambient.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>检测范围管理 · MessageHub</title>
+  <link rel="stylesheet" href="/static/glass.css">
+  <script src="/static/ambient.js"></script>
+  <style>
+    .scope-page { padding: clamp(20px, 4vw, 52px) clamp(14px, 4vw, 60px); }
+    .scope-wrap { max-width: 1320px; margin: auto; }
+    .scope-back { display: inline-flex; align-items: center; min-height: 40px; color: var(--accent); font-weight: 600; }
+    .scope-heading { margin: 16px 0 28px; }
+    .scope-heading h1 { margin: 0 0 6px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.035em; }
+    .scope-heading p, .scope-hint { margin: 0; color: var(--sub); line-height: 1.6; }
+    .scope-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: start; gap: 24px; }
+    .platform-switch { display: grid; gap: 8px; }
+    .scope-page .platform-switch button {
+      min-height: 54px; width: 100%; text-align: left; padding: 12px 16px;
+      color: var(--sub); background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--r); font-size: 16px; font-weight: 600;
+    }
+    .scope-page .platform-switch button:hover { color: var(--ink); border-color: var(--accent); }
+    .scope-page .platform-switch button[aria-pressed="true"] {
+      background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
+    }
+    .scope-panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+    .scope-controls { padding: 22px 24px 16px; }
+    .scope-summary { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 18px; }
+    .scope-summary h2 { font-size: 22px; margin: 0 0 3px; }
+    .scope-count { color: var(--sub); font-size: 14px; font-variant-numeric: tabular-nums; }
+    .scope-page #saveBtn { min-height: 44px; padding-inline: 20px; font-size: 15px; }
+    #dirtyHint { display: block; color: var(--sub); margin-top: 8px; min-height: 1.5em; }
+    .select-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(124px, auto)); gap: 10px; margin-top: 12px; }
+    .scope-page #search, .scope-page #kindFilter, .scope-page #levelFilter {
+      min-height: 44px; width: 100%; min-width: 0; padding-inline: 12px; font-size: 15px;
+    }
+    .scope-hint { font-size: 14px; margin-top: 8px; }
+    .scope-page [hidden] { display: none; }
+    .scope-list { max-height: clamp(280px, 57dvh, 650px); overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); }
+    .scope-page .conv {
+      display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(90px, auto);
+      gap: 14px; min-height: 67px; margin: 0; padding: 8px 24px;
+      border: 0; border-bottom: 1px solid var(--line); border-radius: 0; align-items: center;
+    }
+    .scope-page .conv:last-child { border-bottom: 0; }
+    .scope-page .conv:hover { background: var(--surface-2); }
+    .scope-page .conv .kbadge { width: 34px; height: 34px; font-size: 14px; }
+    .scope-page .conv .n { font-size: 16px; word-break: normal; overflow-wrap: anywhere; }
+    .scope-page .conv small { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
+    .scope-levels { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); }
+    .scope-levels label { position: relative; cursor: pointer; }
+    .scope-levels input { position: absolute; inset: 0; opacity: 0; margin: 0; width: 100%; height: 100%; cursor: pointer; }
+    .scope-levels span { display: grid; place-items: center; min-height: 42px; padding-inline: 10px; white-space: nowrap; border-radius: 6px; color: var(--sub); }
+    .scope-levels label:hover span { background: var(--surface-2); }
+    .scope-levels input:checked + span { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .scope-levels input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .scope-levels input:disabled { cursor: default; }
+    .scope-page :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .scope-page .note { margin: 0 0 12px; }
+    @media (max-width: 700px) {
+      .scope-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+      .platform-switch { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .scope-page .platform-switch button { text-align: center; }
+      .scope-heading { margin: 12px 0 18px; }
+      .scope-controls { padding: 15px; }
+      .scope-page .conv { padding-inline: 15px; gap: 9px; grid-template-columns: 34px minmax(0, 1fr) auto; }
+      .scope-list { max-height: 55dvh; }
+      .scope-page #saveBtn { padding-inline: 12px; }
+    }
+    @media (max-width: 560px) {
+      .select-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .select-toolbar #search { grid-column: 1 / -1; }
+    }
+    @media (max-width: 480px) {
+      .scope-page .conv { grid-template-columns: 34px minmax(0, 1fr); }
+      .scope-levels { grid-column: 2; justify-self: start; }
+    }
+  </style>
 </head>
-<body class="secondary-page">
-<div class="wrap">
-  <div class="topnav">
-    <a href="/">🏠 工作台</a>
-    <a href="/brief">📋 每日简报</a>
-    <a href="/live">⚡ 实时消息接入</a>
-    <a href="/select" class="cur">🔍 检测范围</a>
-  </div>
 
-  <h1>关注会话</h1>
-  <div class="sub">选择想关注的群或联系人。取消关注后，已保存的历史仍可查看。</div>
+<body class="scope-page">
+<main class="scope-wrap">
+  <a class="scope-back" href="/">← 返回工作台</a>
+  <header class="scope-heading">
+    <h1>检测范围</h1>
+    <p>选择 MessageHub 要关注的群聊和联系人。</p>
+  </header>
 
-  <div class="note" id="snapWarn" hidden>
-    微信会话清单还没同步。请保持微信登录，完成首次采集后刷新本页。
-  </div>
+  <div class="scope-layout">
+    <nav class="platform-switch" aria-label="消息平台">
+      <button type="button" data-platform="wechat" aria-pressed="true">微信</button>
+      <button type="button" data-platform="qq" aria-pressed="false">QQ</button>
+    </nav>
 
-  <div class="card">
-    <h2>会话清单 <span class="hint" id="countInfo"></span></h2>
-    <div class="toolbar">
-      <input type="text" id="search" aria-label="搜索会话" placeholder="搜索群名 / 联系人…">
-      <select id="kindFilter" aria-label="会话类型">
-        <option value="all">全部类型</option>
-        <option value="group">仅群聊</option>
-        <option value="contact">仅联系人</option>
-      </select>
-      <div class="spacer"></div>
-    </div>
-    <details id="advanced">
-      <summary>高级设置</summary>
-      <p class="hint">工作和混合会话都会筛选工作消息。混合适合包含闲聊的会话。</p>
-    </details>
-    <div id="list"><div class="empty">加载中…</div></div>
-    <div class="savebar">
-      <span class="summary">已关注 <b id="follow-count">0</b> 个会话</span>
-      <div class="spacer" style="flex:1"></div>
-      <span class="hint" id="dirtyHint" role="status"></span>
-      <button class="primary" id="saveBtn" disabled>保存关注范围</button>
-    </div>
+    <section class="scope-panel" aria-labelledby="platformTitle">
+      <div class="scope-controls">
+        <div class="note" id="snapWarn" hidden>微信会话清单还没同步。请保持微信登录，完成首次采集后刷新本页。</div>
+        <div class="scope-summary">
+          <div>
+            <h2 id="platformTitle">微信会话</h2>
+            <div class="scope-count">已关注 <strong id="follow-count">0</strong><span id="countInfo"></span></div>
+          </div>
+          <button type="button" class="primary" id="saveBtn" disabled>保存微信范围</button>
+        </div>
+        <span id="dirtyHint" role="status"></span>
+        <div class="select-toolbar">
+          <input type="search" id="search" aria-label="搜索会话" placeholder="搜索群名或联系人">
+          <select id="kindFilter" aria-label="会话类型">
+            <option value="all">全部会话</option>
+            <option value="group">群聊</option>
+            <option value="contact">联系人</option>
+          </select>
+          <select id="levelFilter" aria-label="关注状态">
+            <option value="all">全部分级</option>
+            <option value="followed">已关注</option>
+            <option value="work">工作</option>
+            <option value="watch">混合</option>
+            <option value="excluded">未关注</option>
+          </select>
+        </div>
+        <p class="scope-hint" id="qqNote" hidden>仅采集已关注 QQ 会话的新消息。</p>
+      </div>
+      <div id="list" class="scope-list" tabindex="0" aria-label="会话列表">
+        <div class="empty">正在加载会话…</div>
+      </div>
+    </section>
   </div>
-</div>
+</main>
 
 <script>
 const $ = selector => document.querySelector(selector);
@@ -130,60 +138,109 @@ const followed = level => level === 'work' || level === 'watch';
 let conversations = [];
 let bindings = {};
 let saving = false;
+let platform = 'wechat';
+let snapshotAvailable = true;
+const platformNames = {wechat: '微信', qq: 'QQ'};
+const drafts = {
+  wechat: {query: '', kind: 'all', level: 'all', message: ''},
+  qq: {query: '', kind: 'all', level: 'all', message: ''},
+};
+const platformOf = row => row.platform === 'qq' ? 'qq' : 'wechat';
+const platformRows = () => conversations.filter(row => platformOf(row) === platform);
+const hasChanges = () => platformRows().some(row => row.level !== row.savedLevel);
+const showMessage = message => {
+  drafts[platform].message = message;
+  $('#dirtyHint').textContent = message;
+};
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g,
     char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[char]);
 }
 
+function activityLabel(row) {
+  if (!row.last_received) return '暂无活动时间';
+  return '最近收到 ' + new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(row.last_received * 1000));
+}
+
 function render() {
-  const advanced = $('#advanced').open;
   const query = $('#search').value.trim().toLowerCase();
   const kind = $('#kindFilter').value;
-  const visible = conversations.filter(row =>
-    (kind === 'all' || kind === row.kind) && row.name.toLowerCase().includes(query));
+  const level = $('#levelFilter').value;
+  const rows = platformRows();
+  const visible = rows.filter(row => {
+    const matchesLevel = level === 'all' || level === (row.level || 'excluded') ||
+      (level === 'followed' && followed(row.level));
+    return matchesLevel && (kind === 'all' || kind === row.kind) && row.name.toLowerCase().includes(query);
+  });
   $('#list').innerHTML = visible.length ? visible.map(row => {
-    const control = advanced
-      ? `<select data-row="${row.index}" aria-label="${escapeHtml(row.name)}分级">${levels.map(level =>
-          `<option value="${level}" ${(row.level || 'excluded') === level ? 'selected' : ''}>${labels[level]}</option>`
-        ).join('')}</select>`
-      : `<label><input type="checkbox" aria-label="关注 ${escapeHtml(row.name)}" data-row="${row.index}" ${followed(row.level) ? 'checked' : ''}> 关注</label>`;
+    const control = `<div class="scope-levels" role="radiogroup" aria-label="${escapeHtml(row.name)}分级">${levels.map(level =>
+      `<label><input type="radio" name="scope-${row.index}" data-row="${row.index}" value="${level}" ${(row.level || 'excluded') === level ? 'checked' : ''}><span>${labels[level]}</span></label>`
+    ).join('')}</div>`;
     return `<div class="conv"><span class="kbadge ${row.kind}">${row.kind === 'group' ? '群' : '人'}</span>
-      <div class="nm"><div class="n">${escapeHtml(row.name)}</div></div>
-      <div>${control}</div></div>`;
-  }).join('') : '<div class="empty">没有可显示的会话</div>';
-  $('#countInfo').textContent = `（${visible.length} / ${conversations.length}）`;
+      <div class="nm"><div class="n">${escapeHtml(row.name)} ${row.platform === 'qq' ? `<small>${escapeHtml(row.identity_hint)}${row.kind === 'group' ? ' · ' + escapeHtml(activityLabel(row)) : ''}</small>` : ''}</div></div>
+      ${control}</div>`;
+  }).join('') : '<div class="empty">' + (rows.length ? '没有匹配的会话' :
+    platform === 'qq' ? '暂无 QQ 会话。连接 QQ 采集引擎或导入 QQ 文件后刷新本页。' : '暂无微信会话。') + '</div>';
+  $('#countInfo').textContent = ` · 显示 ${visible.length} / ${rows.length} 个会话`;
+  $('#platformTitle').textContent = platformNames[platform] + '会话';
+  $('#saveBtn').textContent = '保存' + platformNames[platform] + '范围';
+  $('#snapWarn').hidden = platform !== 'wechat' || snapshotAvailable;
+  $('#qqNote').hidden = platform !== 'qq';
+  $('#dirtyHint').textContent = drafts[platform].message;
+  for (const button of document.querySelectorAll('[data-platform]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.platform === platform));
+    button.disabled = saving;
+  }
   refreshSaveState();
 }
 
 function refreshSaveState() {
-  $('#follow-count').textContent = conversations.filter(row => followed(row.level)).length;
-  $('#saveBtn').disabled = saving || !conversations.some(row => row.level !== row.savedLevel);
+  $('#follow-count').textContent = platformRows().filter(row => followed(row.level)).length;
+  $('#saveBtn').disabled = saving || !hasChanges();
   $('#list').querySelectorAll('[data-row]').forEach(input => { input.disabled = saving; });
 }
 
-async function load() {
+let loadingConversations = false;
+let scopeRevision = 0;
+let lastConversationPayload = '';
+const scopeRefreshBlocked = () => saving ||
+  conversations.some(row => row.level !== row.savedLevel) || $('#list').contains(document.activeElement);
+
+async function load(background = false) {
+  if (loadingConversations || (background && scopeRefreshBlocked())) return;
+  loadingConversations = true;
+  const revision = scopeRevision;
   try {
     const response = await fetch('/api/scope/conversations', {signal: AbortSignal.timeout(8000)});
     if (!response.ok) throw new Error();
     const data = await response.json();
-    $('#snapWarn').hidden = data.snapshot_available;
+    if (background && (revision !== scopeRevision || scopeRefreshBlocked())) return;
+    const payload = JSON.stringify(data);
+    if (background && payload === lastConversationPayload) return;
+    lastConversationPayload = payload;
+    snapshotAvailable = data.snapshot_available;
     bindings = data.group_ids || {};
     const rows = [...data.conversations];
     for (const [kind, segment] of Object.entries(segments)) {
-      const known = new Set(rows.filter(row => row.kind === kind).map(row => row.name));
+      const known = new Set(rows.filter(row => row.kind === kind && row.platform !== 'qq').map(row => row.name));
       for (const name of new Set(Object.values(data.levels[segment]).flat())) {
         if (!known.has(name)) rows.push({kind, name});
       }
     }
     conversations = rows.map((row, index) => {
+      if (row.platform === 'qq') return {...row, index, savedLevel: row.level};
       const selected = data.levels[segments[row.kind]];
       const level = levels.find(key => selected[key].includes(row.name)) || null;
       return {...row, index, level, savedLevel: level};
     });
     render();
   } catch {
-    $('#list').textContent = '会话清单加载失败，请刷新重试。';
+    if (!background) $('#list').textContent = '会话清单加载失败，请刷新重试。';
+  } finally {
+    loadingConversations = false;
   }
 }
 
@@ -191,27 +248,46 @@ $('#list').addEventListener('change', event => {
   const input = event.target.closest('[data-row]');
   if (!input || saving) return;
   const row = conversations[Number(input.dataset.row)];
-  const level = input.type === 'checkbox'
-    ? (input.checked ? (followed(row.savedLevel) ? row.savedLevel : 'watch') : followed(row.savedLevel) ? 'excluded' : row.savedLevel)
-    : input.value;
+  const level = input.value;
+  scopeRevision++;
   for (const match of conversations) {
-    if (match.kind === row.kind && match.name === row.name) match.level = level;
+    if (row.platform === 'qq' ? match === row :
+      match.platform !== 'qq' && match.kind === row.kind && match.name === row.name) match.level = level;
   }
-  $('#dirtyHint').textContent = conversations.some(row => row.level !== row.savedLevel) ? '有未保存的修改' : '';
+  showMessage(hasChanges() ? '有未保存的修改' : '');
   render();
-  $('#list').querySelector(`[data-row="${row.index}"]`)?.focus();
+  const selected = $('#list').querySelector(`[data-row="${row.index}"]:checked`);
+  (selected || $('#levelFilter')).focus({preventScroll: true});
 });
 
-$('#advanced').addEventListener('toggle', render);
+$('.platform-switch').addEventListener('click', event => {
+  const button = event.target.closest('[data-platform]');
+  if (!button || saving || button.dataset.platform === platform) return;
+  drafts[platform].query = $('#search').value;
+  drafts[platform].kind = $('#kindFilter').value;
+  drafts[platform].level = $('#levelFilter').value;
+  platform = button.dataset.platform;
+  $('#search').value = drafts[platform].query;
+  $('#kindFilter').value = drafts[platform].kind;
+  $('#levelFilter').value = drafts[platform].level;
+  $('#list').scrollTop = 0;
+  render();
+});
+
 $('#search').addEventListener('input', render);
 $('#kindFilter').addEventListener('change', render);
+$('#levelFilter').addEventListener('change', render);
 
 function scopePayload() {
+  if (platform === 'qq') {
+    return {qq_levels: Object.fromEntries(platformRows().filter(row => followed(row.level))
+      .map(row => [row.id, row.level]))};
+  }
   const payload = {};
   for (const segment of Object.values(segments)) {
     payload[segment] = Object.fromEntries(levels.map(level => [
       level, [...new Set(conversations.filter(row =>
-        segments[row.kind] === segment && row.level === level).map(row => row.name))],
+        row.platform !== 'qq' && segments[row.kind] === segment && row.level === level).map(row => row.name))],
     ]));
   }
   payload.group_ids = Object.fromEntries(levels.map(level => [level, {}]));
@@ -222,7 +298,7 @@ function scopePayload() {
   }
   const groupsByName = new Map();
   for (const row of conversations) {
-    if (row.kind !== 'group' || !row.id) continue;
+    if (row.platform === 'qq' || row.kind !== 'group' || !row.id) continue;
     const matches = groupsByName.get(row.name) || [];
     matches.push(row);
     groupsByName.set(row.name, matches);
@@ -240,8 +316,8 @@ function scopePayload() {
 $('#saveBtn').addEventListener('click', async () => {
   if (saving) return;
   saving = true;
-  refreshSaveState();
-  $('#dirtyHint').textContent = '正在保存…';
+  render();
+  showMessage('正在保存…');
   const payload = scopePayload();
   try {
     const response = await fetch('/api/scope/config', {
@@ -251,19 +327,25 @@ $('#saveBtn').addEventListener('click', async () => {
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error('保存失败，请重试。');
-    bindings = payload.group_ids;
-    for (const row of conversations) row.savedLevel = row.level;
-    $('#dirtyHint').textContent = '已保存。等待下一轮微信同步。';
-    if (fromSetup) location.assign('/');
+    lastConversationPayload = '';
+    if (payload.group_ids) bindings = payload.group_ids;
+    for (const row of platformRows()) row.savedLevel = row.level;
+    showMessage(platform === 'wechat' ? '已保存。等待下一轮微信同步。' : '已保存 QQ 关注范围。');
+    if (fromSetup && platform === 'wechat' && !conversations.some(row => row.level !== row.savedLevel)) location.assign('/');
   } catch (error) {
-    $('#dirtyHint').textContent = error.message;
+    showMessage(error.message);
   } finally {
     saving = false;
-    refreshSaveState();
+    render();
   }
 });
 
 load();
+function refreshScope() {
+  if (!document.hidden) load(true);
+}
+setInterval(refreshScope, 30000);
+document.addEventListener('visibilitychange', refreshScope);
 </script>
 </body>
 </html>

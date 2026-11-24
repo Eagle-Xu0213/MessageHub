@@ -19,7 +19,7 @@ from messagehub.database import get_db, init_db
 from messagehub.pipeline.watcher import scan_directory, get_latest_capture_status
 from messagehub.pipeline.importer import make_fingerprint, insert_messages
 from messagehub.pipeline.live import get_collector
-from messagehub.routers import brief, live, tasks, scope
+from messagehub.routers import brief, live, qq, tasks, scope
 from messagehub import personal, schedule
 from messagehub import mail as brief_mail
 from messagehub import update
@@ -75,6 +75,7 @@ app.include_router(tasks.router)
 app.include_router(live.router)
 app.include_router(brief.router)
 app.include_router(scope.router)
+app.include_router(qq.router)
 # lifespan 统一在上方 _combined_lifespan 组装（采集器 + 调度器），
 # 勿再对各模块的 register_startup_hook 赋值 lifespan_context（会互相覆盖，2026-11-18 回归教训）
 brief_mail.register()  # 邮件桥：简报有实质内容时自动发到配置的收件箱
@@ -343,7 +344,9 @@ async def import_messages(file: UploadFile = File(...)):
             if isinstance(data, list):
                 messages = data
             else:
-                messages = [data]
+                from messagehub.adapters.registry import parse_qq_exporter_v5
+
+                messages = parse_qq_exporter_v5(data) if isinstance(data, dict) and "chatInfo" in data else [data]
 
         else:
             # TXT/CSV：按行处理，每行一条消息文本

@@ -31,6 +31,8 @@ from pydantic import BaseModel
 
 from messagehub.config import BASE_DIR, CN_TZ, DB_PATH, TEMPLATES_DIR
 from messagehub import personal
+from messagehub.database import get_db
+from messagehub.routers import qq
 
 router = APIRouter()
 
@@ -87,7 +89,7 @@ def _recent_activity_from_messages() -> Dict[str, Dict[str, Any]]:
         conn = _ro(DB_PATH)
         rows = conn.execute(
             "SELECT conversation_name, COUNT(*) AS cnt, MAX(sent_at) AS last_at "
-            "FROM messages GROUP BY conversation_name").fetchall()
+            "FROM messages WHERE source_platform != 'qq' GROUP BY conversation_name").fetchall()
         conn.close()
         for r in rows:
             out[r["conversation_name"]] = {
@@ -194,10 +196,11 @@ def _current_levels() -> Dict[str, Dict[str, List[str]]]:
     }
 
 
-def _save_config(groups: Dict[str, List[str]],
-                 contacts: Dict[str, List[str]],
-                 group_ids: Optional[Dict[str, Dict[str, str]]] = None) -> None:
-    """把分级写回 config/personal.json（只动 groups 与 contacts 段）。
+def _save_config(groups: Optional[Dict[str, List[str]]],
+                 contacts: Optional[Dict[str, List[str]]],
+                 group_ids: Optional[Dict[str, Dict[str, str]]] = None,
+                 qq_levels: Optional[Dict[str, str]] = None) -> None:
+    """把提交的平台分级写回 config/personal.json。
 
     其他段（identity/aliases/brief）原样保留；写前先备份一份 .bak。
     """
@@ -222,24 +225,39 @@ def _save_config(groups: Dict[str, List[str]],
                 out.append(s)
         return out
 
-    data["groups"] = {
-        "work": _clean(groups.get("work")),
-        "watch": _clean(groups.get("watch")),
-        "excluded": _clean(groups.get("excluded")),
-    }
-    # Save stable IDs only when a display name maps unambiguously to one group.
-    bindings = group_ids if group_ids is not None else (data.get('group_ids') or {})
-    data['group_ids'] = {level: {gid: name for gid, name in (bindings.get(level) if isinstance(bindings.get(level), dict) else {}).items()
-                                       if isinstance(gid, str) and gid.endswith('@chatroom') and name in data['groups'][level]}
-                         for level in ('work', 'watch', 'excluded')}
-    data["contacts"] = {
-        "work": _clean(contacts.get("work")),
-        "watch": _clean(contacts.get("watch")),
-        "excluded": _clean(contacts.get("excluded")),
-    }
+    if groups is not None and contacts is not None:
+        data["groups"] = {
+            "work": _clean(groups.get("work")),
+            "watch": _clean(groups.get("watch")),
+            "excluded": _clean(groups.get("excluded")),
+        }
+        # Save stable IDs only when a display name maps unambiguously to one group.
+        bindings = group_ids if group_ids is not None else (data.get('group_ids') or {})
+        data['group_ids'] = {level: {gid: name for gid, name in (bindings.get(level) if isinstance(bindings.get(level), dict) else {}).items()
+                                           if isinstance(gid, str) and gid.endswith('@chatroom') and name in data['groups'][level]}
+                             for level in ('work', 'watch', 'excluded')}
+        data["contacts"] = {
+            "work": _clean(contacts.get("work")),
+            "watch": _clean(contacts.get("watch")),
+            "excluded": _clean(contacts.get("excluded")),
+        }
+    if qq_levels is not None:
+        prior = data.get("qq_scope") or {}
+        known = {row["id"]: row for row in _qq_conversations()}
+        data["qq_scope"] = {
+            key: value for key, value in prior.items() if key not in known
+        } | {
+            row["id"]: {
+                "level": qq_levels[row["id"]],
+                "since": (prior.get(row["id"]) or {}).get("since") or datetime.now(CN_TZ).isoformat(),
+                "baseline_id": (prior.get(row["id"]) or {}).get("baseline_id", row["latest_id"]),
+            }
+            for row in known.values()
+            if qq_levels.get(row["id"]) in ("work", "watch")
+        }
     data.setdefault("identity", {})
 
-    if any(data[key] != value for key, value in previous.items()):
+    if any(data.get(key) != value for key, value in previous.items()):
         data["scope_updated_at"] = datetime.now(CN_TZ).isoformat()
     personal.write_local_config(data)
 
@@ -251,12 +269,55 @@ async def select_page():
     return HTMLResponse(env.get_template("select.html").render())
 
 
+def _qq_conversations() -> list[dict]:
+    conn = get_db()
+    try:
+        rows = conn.execute("""SELECT m.id, m.conversation_id, m.conversation_name, latest.last_received
+            FROM messages m JOIN (
+                SELECT MAX(id) AS id,
+                       MAX(CAST(strftime('%s', sent_at) AS INTEGER)) AS last_received
+                FROM messages
+                WHERE source_platform='qq' AND source_method IN ('qq_chat_exporter_v5', 'qq_onebot')
+                  AND (conversation_id LIKE 'qq:group:%' OR conversation_id LIKE 'qq:contact:%')
+                GROUP BY conversation_id
+            ) latest ON latest.id=m.id ORDER BY m.id DESC""")
+        scope = personal._CONFIG.get("qq_scope") or {}
+        items = []
+        for row in rows:
+            _, kind, identity = row["conversation_id"].split(":", 2)
+            try:
+                account, peer = json.loads(identity)
+                if not isinstance(account, str) or not isinstance(peer, str) or not account or not peer:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            items.append({
+                "id": row["conversation_id"], "name": row["conversation_name"], "platform": "qq",
+                "kind": kind, "identity_hint": f"{account[-4:]} / {peer[-4:]}",
+                "latest_id": row["id"], "level": (scope.get(row["conversation_id"]) or {}).get("level"),
+                "last_received": max(row["last_received"] or 0,
+                                     qq.catalog.get(row["conversation_id"], {}).get("last_received", 0)),
+            })
+        existing = {row["id"] for row in items}
+        items.extend(
+            {**row, "latest_id": 0, "level": (scope.get(key) or {}).get("level")}
+            for key, row in qq.catalog.items() if key not in existing
+        )
+        local_activity = qq.local_group_activity()
+        for row in items:
+            row["last_received"] = max(row.get("last_received", 0), local_activity.get(row["id"], 0))
+        items.sort(key=lambda row: row["last_received"], reverse=True)
+        return items
+    finally:
+        conn.close()
+
+
 @router.get("/api/scope/conversations")
 async def scope_conversations():
     """会话清单 + 当前分级。"""
     items = _load_conversations()
     return JSONResponse({
-        "conversations": items,
+        "conversations": items + _qq_conversations(),
         "levels": _current_levels(),
         "snapshot_available": _find_snapshot() is not None,
         "group_ids": personal.group_bindings(),
@@ -264,15 +325,21 @@ async def scope_conversations():
 
 
 class ScopeSave(BaseModel):
-    groups: Dict[str, List[str]]
-    contacts: Dict[str, List[str]]
+    groups: Optional[Dict[str, List[str]]] = None
+    contacts: Optional[Dict[str, List[str]]] = None
     group_ids: Optional[Dict[str, Dict[str, str]]] = None
+    qq_levels: Optional[Dict[str, str]] = None
 
 
 @router.post("/api/scope/config")
 async def save_scope(payload: ScopeSave):
     """保存分级配置（前端提交勾选结果）。"""
-    _save_config(payload.groups, payload.contacts, payload.group_ids)
+    wechat = payload.groups is not None and payload.contacts is not None
+    if (payload.groups is None) != (payload.contacts is None) or (payload.group_ids is not None and not wechat):
+        raise HTTPException(422, "微信分级需要同时提交群聊和联系人")
+    if not wechat and payload.qq_levels is None:
+        raise HTTPException(422, "没有提交检测范围")
+    _save_config(payload.groups, payload.contacts, payload.group_ids, payload.qq_levels)
     return JSONResponse({
         "status": "ok",
         "levels": _current_levels(),

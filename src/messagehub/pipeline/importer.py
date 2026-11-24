@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
@@ -18,6 +19,13 @@ from messagehub.adapters.registry import detect_and_parse
 def make_fingerprint(m: dict) -> str:
     """稳定指纹：优先 source_message_id；否则内容级指纹。"""
     sid = m.get("source_message_id")
+    if m.get("source_platform") == "qq" and str(m.get("conversation_id") or "").startswith("qq:"):
+        identity = [m.get("account_ref"), m.get("conversation_id"), sid]
+        if m.get("source_method") == "qq_onebot":
+            identity.append("qq_onebot")
+        if not sid:
+            identity.extend(m.get(key) for key in ("sender_ref", "sender_name", "sent_at", "text"))
+        return "qq::" + hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode("utf-8")).hexdigest()
     if sid:
         return f"id::{m.get('source_platform','?')}::{sid}"
     ts = (m.get("sent_at") or "")[:17]  # 精确到分钟，分钟级重复视为同一条
@@ -48,8 +56,8 @@ def insert_messages(conn: sqlite3.Connection, raw_list: list[dict]) -> dict:
                 """INSERT INTO messages
                    (source_platform, source_method, account_ref, conversation_id,
                     conversation_name, sender_name, sent_at, text, message_type,
-                    source_message_id, fingerprint, time_confidence, capture_status)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    source_message_id, fingerprint, time_confidence, capture_status, sender_ref)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     m.get("source_platform", "unknown"),
                     m.get("source_method", "file_import"),
@@ -64,6 +72,7 @@ def insert_messages(conn: sqlite3.Connection, raw_list: list[dict]) -> dict:
                     fp,
                     m.get("time_confidence") or ("exact" if m.get("sent_at") else "unknown"),
                     m.get("capture_status") or "full",
+                    m.get("sender_ref"),
                 ),
             )
             inserted += 1

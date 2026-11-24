@@ -123,6 +123,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     cur.execute("PRAGMA table_info(messages)")
     cols = {r[1] for r in cur.fetchall()}
     for col, ctype in (
+        ("sender_ref", "TEXT"),
         ("account_ref", "TEXT"),
         ("source_message_id", "TEXT"),
         ("time_confidence", "TEXT"),

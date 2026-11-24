@@ -134,6 +134,11 @@ def parse_qq_exporter_v5(data: dict) -> list[dict]:
     chat = data.get("chatInfo") or {}
     conv_name = chat.get("name") or "QQ会话"
     conv_id = chat.get("peerUid") or chat.get("uin") or chat.get("selfUin") or conv_name
+    account = str(chat.get("selfUin") or chat.get("selfUid") or "")
+    peer = str(chat.get("peerUid") or chat.get("peerUin") or chat.get("groupCode") or chat.get("uin") or "")
+    kind = {"group": "group", "private": "contact", "friend": "contact", "single": "contact", "c2c": "contact"}.get(str(chat.get("type") or "").lower())
+    if account and peer and kind:
+        conv_id = "qq:" + kind + ":" + json.dumps([account, peer], ensure_ascii=False, separators=(",", ":"))
     msgs = data.get("messages") or []
     for m in msgs:
         sender = m.get("sender") or {}
@@ -150,10 +155,11 @@ def parse_qq_exporter_v5(data: dict) -> list[dict]:
         out.append({
             "source_platform": "qq",
             "source_method": "qq_chat_exporter_v5",
-            "account_ref": chat.get("selfUin"),
+            "account_ref": account or None,
             "conversation_id": conv_id,
             "conversation_name": conv_name,
             "sender_name": sname,
+            "sender_ref": str(sender.get("uid") or sender.get("uin") or ""),
             "sent_at": iso,
             "text": text,
             "message_type": "text",

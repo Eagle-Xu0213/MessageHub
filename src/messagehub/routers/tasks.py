@@ -41,7 +41,11 @@ def _context_summary(conn, task):
     anchor = _time(task['sent_at'])
     if not anchor:
         return None
-    fields = 'id,sender_name,sent_at,text'
+    fields = '*'
+    anchor_row = conn.execute('SELECT * FROM messages WHERE id=?', (task['message_id'],)).fetchone()
+    if not anchor_row:
+        return None
+    anchor_message = dict(anchor_row)
     after = conn.execute(f'''SELECT {fields} FROM messages WHERE conversation_id=? AND id>?
         ORDER BY id ASC LIMIT 4''', (task['conversation_id'], task['message_id'])).fetchall()
     before = conn.execute(f'''SELECT {fields} FROM messages WHERE conversation_id=? AND id<?
@@ -50,6 +54,12 @@ def _context_summary(conn, task):
     def fragments(rows):
         result = []
         for row in rows:
+            message = dict(row)
+            if anchor_message.get("source_platform") == "qq" or message.get("source_platform") == "qq":
+                from messagehub.task_pipeline import same_qq_sender
+
+                if not same_qq_sender(anchor_message, message):
+                    break
             sent = _time(row['sent_at'])
             if row['sender_name'] != task['sender_name'] or not sent or abs((sent - anchor).total_seconds()) > 300:
                 break
@@ -95,9 +105,14 @@ async def workbench_items():
     conn = get_db()
     try:
         rows = conn.execute('SELECT * FROM personal_tasks ORDER BY id DESC').fetchall()
+        platforms = {
+            row['id']: dict(row).get('source_platform')
+            for row in conn.execute('SELECT m.* FROM messages m JOIN personal_tasks t ON t.message_id=m.id')
+        }
         items = []
         for row in rows:
             item = dict(row)
+            item['source_platform'] = platforms.get(item['message_id']) or 'manual'
             item['context_summary'] = _context_summary(conn, item)
             items.append(item)
         return {'items': items}

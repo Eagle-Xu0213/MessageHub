@@ -983,6 +983,14 @@ def run_once(args, state: dict) -> dict:
             generation = marker
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    if args.no_refresh:
+        # The headless producer must finish and publish before we move its files.
+        published = Path(generation["snapshot"]).resolve() if generation else None
+        project_archives = SAFE_CLEAN_PREFIX.resolve()
+        snaps = [p for p in snaps if p.resolve() == CURRENT.resolve()
+                 or p.resolve() == published or project_archives not in p.resolve().parents]
+        if not snaps:
+            return state
     # 把项目内快照合并进固定目录（同盘覆盖移动，不删文件、磁盘恒定一份）
     try:
         snap = consolidate(snaps)

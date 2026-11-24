@@ -54,6 +54,7 @@ _DEFAULTS: Dict[str, Any] = {
         "watch": [],
         "excluded": [],
     },
+    "qq_scope": {},
     "aliases": {},
     "brief": {
         "persona": "一位大学生",

@@ -1,108 +1,29 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>实时消息接入 · MessageHub</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 28px 20px 60px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: #f5f7fa; color: #1f2733; line-height: 1.6;
-  }
-  .wrap { max-width: 1080px; margin: 0 auto; }
-  .topnav { display: flex; gap: 14px; margin-bottom: 18px; font-size: 14px; }
-  .topnav a { color: #1668dc; text-decoration: none; }
-  .topnav a:hover { text-decoration: underline; }
-  h1 { font-size: 25px; margin: 0 0 6px; }
-  .sub { color: #6b7785; font-size: 14px; margin-bottom: 24px; }
-  .card {
-    background: #fff; border: 1px solid #e3e8ef; border-radius: 12px;
-    padding: 20px 22px; margin-bottom: 18px;
-    box-shadow: 0 1px 3px rgba(20,40,80,.04);
-  }
-  .card h2 { font-size: 16px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-  .stat { background: #f7f9fc; border-radius: 9px; padding: 12px 14px; }
-  .stat .k { font-size: 12px; color: #7a8698; }
-  .stat .v { font-size: 21px; font-weight: 650; margin-top: 3px; }
-  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
-  .ok { background: #389e0d; } .warn { background: #d48806; }
-  .err { background: #d9381e; } .off { background: #a8b0bd; }
-  .badge {
-    display: inline-block; padding: 2px 9px; border-radius: 20px;
-    font-size: 12px; background: #eef3fb; color: #34527d; margin-left: 6px;
-  }
-  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
-  .row:last-child { margin-bottom: 0; }
-  label { font-size: 13px; color: #4a5768; }
-  input[type=text], input[type=number] {
-    border: 1px solid #d5dde8; border-radius: 7px; padding: 7px 10px;
-    font-size: 13px; font-family: inherit; outline: none; background: #fff; color: #1f2733;
-  }
-  input:focus { border-color: #1668dc; }
-  input.wide { width: 340px; } input.small { width: 82px; }
-  button {
-    border: 1px solid #d5dde8; background: #fff; color: #26313f;
-    border-radius: 7px; padding: 7px 15px; font-size: 13px; cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover { border-color: #1668dc; color: #1668dc; }
-  button.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
-  button.primary:hover { background: #1158bd; color: #fff; }
-  button:disabled { opacity: .55; cursor: not-allowed; }
-  .src {
-    border: 1px solid #e8edf4; border-radius: 9px; padding: 13px 15px; margin-bottom: 11px;
-    background: #fcfdff;
-  }
-  .src:last-child { margin-bottom: 0; }
-  .src .hd { font-weight: 600; font-size: 14px; margin-bottom: 5px; }
-  .src .meta { font-size: 12.5px; color: #6b7785; word-break: break-all; }
-  .src .reason { font-size: 12.5px; color: #b06a00; margin-top: 5px; }
-  code {
-    background: #f0f3f8; padding: 1px 6px; border-radius: 4px;
-    font-size: 12px; font-family: Consolas, Monaco, monospace;
-  }
-  #stream {
-    height: 340px; overflow-y: auto; background: #fbfcfe;
-    border: 1px solid #e8edf4; border-radius: 9px; padding: 10px 14px;
-  }
-  .msg { padding: 9px 0; border-bottom: 1px dashed #e6ebf2; font-size: 13px; }
-  .msg:last-child { border-bottom: none; }
-  .msg .m1 { color: #7a8698; font-size: 12px; margin-bottom: 2px; }
-  .msg .m2 { color: #1f2733; word-break: break-word; }
-  .empty { color: #98a3b3; font-size: 13px; text-align: center; padding: 60px 0; }
-  .note {
-    background: #fffbe8; border: 1px solid #f5e2a8; border-radius: 9px;
-    padding: 13px 16px; font-size: 13px; color: #6b5518; margin-bottom: 18px;
-  }
-  .note b { color: #8a6110; }
-  .hint { font-size: 12.5px; color: #7a8698; margin-top: 8px; }
-  .msgbox { display: flex; gap: 8px; margin-top: 12px; }
-  .msgbox input { flex: 1; }
-  pre {
-    background: #f7f9fc; border: 1px solid #e3e8ef; border-radius: 9px;
-    padding: 12px 14px; overflow-x: auto; font-size: 12px; line-height: 1.65;
-    font-family: Consolas, Monaco, monospace; color: #26313f; margin: 10px 0 0;
-  }
-  .fieldlist { font-size: 12.5px; color: #4a5768; margin-top: 10px; }
-  .fieldlist code { margin-right: 4px; }
-</style>
-<link rel="stylesheet" href="/static/glass.css">
-<script src="/static/ambient.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实时消息接入 · MessageHub</title>
+  <link rel="stylesheet" href="/static/glass.css">
+  <script src="/static/ambient.js"></script>
 </head>
 <body class="secondary-page">
 <div class="wrap">
-  <div class="topnav">
-    <a href="/">工作台</a>
+
+  <!-- Back-link header -->
+  <nav class="topnav" style="display:flex;gap:16px;margin-bottom:24px;font-size:13px;">
+    <a href="/">← 工作台</a>
     <a href="/select">检测范围</a>
-    <a href="/live">实时接入</a>
+    <a href="/live" class="cur">实时接入</a>
+  </nav>
+
+  <!-- Page title -->
+  <div class="page-title" style="margin-bottom:24px;">
+    <h1>实时消息接入</h1>
+    <p class="sub" style="margin:4px 0 0;">第一阶段：只负责把新消息持续接进来。整理与分类规则下一阶段再设计。</p>
   </div>
 
-  <h1>实时消息接入</h1>
-  <div class="sub">第一阶段：只负责把新消息持续接进来。整理与分类规则下一阶段再设计。</div>
-
+  <!-- UIA limitation note -->
   <div class="note">
     <b>实测结论（2026-11-15 · 屏幕已解锁 / 全群已授权）</b>：微信 4.2 主窗口可见，
     但消息区是 <code>MMUIRenderSubWindowHW</code> 自绘层——UIA 控件树 63 个节点、
@@ -114,56 +35,96 @@
     UIA 取不到精确消息时间时标记 <code>capture_time</code>，绝不伪称精确时间。
   </div>
 
-  <div class="card">
-    <h2>运行状态 <span id="runBadge" class="badge">读取中…</span></h2>
-    <div class="grid">
-      <div class="stat"><div class="k">采集状态</div><div class="v" id="sRunning">—</div></div>
-      <div class="stat"><div class="k">累计新增消息</div><div class="v" id="sTotal">—</div></div>
-      <div class="stat"><div class="k">轮询轮次</div><div class="v" id="sCycles">—</div></div>
-      <div class="stat"><div class="k">最后轮询</div><div class="v" id="sLast" style="font-size:15px">—</div></div>
-      <div class="stat"><div class="k">轮询间隔</div><div class="v" id="sInterval" style="font-size:15px">—</div></div>
+  <!-- ═══ Runtime Status ═══ -->
+  <section class="card">
+    <div class="panel-head">
+      <h2>运行状态</h2>
+      <span id="runBadge" class="badge">读取中…</span>
     </div>
-    <div class="row" style="margin-top:16px">
+    <div class="grid">
+      <div class="stat">
+        <div class="k">采集状态</div>
+        <div class="v" id="sRunning">—</div>
+      </div>
+      <div class="stat">
+        <div class="k">累计新增消息</div>
+        <div class="v" id="sTotal">—</div>
+      </div>
+      <div class="stat">
+        <div class="k">轮询轮次</div>
+        <div class="v" id="sCycles">—</div>
+      </div>
+      <div class="stat">
+        <div class="k">最后轮询</div>
+        <div class="v" id="sLast" style="font-size:15px">—</div>
+      </div>
+      <div class="stat">
+        <div class="k">轮询间隔</div>
+        <div class="v" id="sInterval" style="font-size:15px">—</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px;">
       <button class="primary" id="btnStart">启动采集</button>
       <button id="btnStop">停止</button>
       <button id="btnPoll">手动采集一轮</button>
       <button id="btnProbe">只读环境探测</button>
       <span id="ctlMsg" class="hint"></span>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>数据源状态</h2>
-    <div id="srcList"><div class="empty">读取中…</div></div>
-  </div>
+  <!-- ═══ Data Sources ═══ -->
+  <section class="card">
+    <div class="panel-head">
+      <h2>数据源状态</h2>
+    </div>
+    <div id="srcList">
+      <div class="empty">读取中…</div>
+    </div>
+  </section>
 
-  <div class="card">
-    <h2>采集配置</h2>
-    <div class="row">
-      <label><input type="checkbox" id="srcTail" checked> 文件尾随 tail（导出工具持续写入 JSONL）</label>
-      <label><input type="checkbox" id="srcUia" checked> 客户端 UIA 只读</label>
-      <label>间隔 <input type="number" id="cfgInterval" class="small" min="0.5" max="60" step="0.5" value="3"> 秒</label>
+  <!-- ═══ Collection Config ═══ -->
+  <section class="card">
+    <div class="panel-head">
+      <h2>采集配置</h2>
     </div>
-    <div class="row">
-      <label><input type="checkbox" id="cfgAll"> 采集所有群（等价于白名单 <code>*</code>）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+        <input type="checkbox" id="srcTail" checked> 文件尾随 tail（导出工具持续写入 JSONL）
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+        <input type="checkbox" id="srcUia" checked> 客户端 UIA 只读
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+        间隔 <input type="number" id="cfgInterval" style="width:80px;" min="0.5" max="60" step="0.5" value="3"> 秒
+      </label>
     </div>
-    <div class="row">
-      <label>工作群白名单</label>
-      <input type="text" id="cfgChats" class="wide" placeholder="多个群用英文逗号分隔；留空 = 不采集客户端消息">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+        <input type="checkbox" id="cfgAll"> 采集所有群（等价于白名单 <code>*</code>）
+      </label>
     </div>
-    <div class="row">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
+      <label style="margin:0;white-space:nowrap;">工作群白名单</label>
+      <input type="text" id="cfgChats" style="flex:1;min-width:200px;max-width:420px;"
+             placeholder="多个群用英文逗号分隔；留空 = 不采集客户端消息">
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
       <button class="primary" id="btnSave">保存配置</button>
       <span class="hint">未选定采集范围时只探测窗口结构。放开全群仅影响 UIA 路径，不改变其自绘层限制。</span>
     </div>
-    <div class="hint" id="livePath"></div>
-  </div>
+    <div class="hint" id="livePath" style="margin-top:10px;"></div>
+  </section>
 
-  <div class="card">
-    <h2>标准接入点 <span class="badge">推荐 · 已验证</span></h2>
-    <div class="hint">
+  <!-- ═══ Standard Ingest Endpoint ═══ -->
+  <section class="card">
+    <div class="panel-head">
+      <h2>标准接入点</h2>
+      <span class="badge">推荐 · 已验证</span>
+    </div>
+    <p class="hint" style="margin:0 0 8px;">
       任何能拿到新消息的工具（导出器、桥接程序、推送脚本）调用一次即可：消息当轮入库、按指纹去重、
       立刻出现在下方消息流。<b>不依赖微信 / QQ 客户端控件结构</b>，是当前唯一稳定可用的实时通道。
-    </div>
+    </p>
     <pre id="ingestExample">POST http://127.0.0.1:8000/api/live/ingest
 Content-Type: application/json
 
@@ -175,7 +136,7 @@ Content-Type: application/json
   "sent_at": "2026-11-15T11:30:00+08:00",
   "text": "今天下午三点评审"
 }</pre>
-    <div class="row" style="margin-top:12px">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;">
       <button class="primary" id="btnCopy">复制 PowerShell 示例</button>
       <button id="btnTryIngest">发一条接入示例</button>
       <span class="hint" id="copyMsg"></span>
@@ -186,22 +147,31 @@ Content-Type: application/json
       <code>source_message_id</code>。支持单条对象、数组批量、或 <code>{"messages":[...]}</code> 包装（单批上限 1000 条）。
       不传 <code>sent_at</code> 时按采集时刻入库并标记 <code>capture_time</code>。
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>实时消息流 <span id="streamBadge" class="badge">等待新消息</span>
-      <span id="latestTs" style="font-size:12px;font-weight:400;color:#6b7785;margin-left:12px;"></span></h2>
-    <div id="stream"><div class="empty">尚无新消息流入</div></div>
+  <!-- ═══ Live Message Stream ═══ -->
+  <section class="card">
+    <div class="panel-head">
+      <h2>
+        实时消息流
+        <span id="streamBadge" class="badge" style="margin-left:6px;">等待新消息</span>
+      </h2>
+      <span id="latestTs" style="font-size:12px;color:var(--faint);"></span>
+    </div>
+    <div id="stream">
+      <div class="empty">尚无新消息流入</div>
+    </div>
     <div class="msgbox">
       <input type="text" id="testText" placeholder="输入一条测试消息，验证实时通道（会真实写入数据库）">
       <button id="btnInject">发送测试消息</button>
     </div>
-    <div class="hint">
+    <p class="hint" style="margin-top:10px;">
       其它接入方式：向 <code>imports/live/*.jsonl</code> 追加 JSONL 行（tail 尾随），
       或 <code>POST /api/live/inject</code> 写入单条；正式批量推送请用上方
       <code>POST /api/live/ingest</code>。三种方式共用指纹去重，重复内容不会膨胀。
-    </div>
-  </div>
+    </p>
+  </section>
+
 </div>
 
 <script>

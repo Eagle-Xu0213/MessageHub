@@ -308,9 +308,15 @@ def test_generation_marked_only_after_all_ingests_succeed(ml, tmp_path, monkeypa
         'completed_at': '2026-11-21T10:00:00+08:00'}), encoding='utf-8')
     monkeypatch.setattr(ml, 'ROOT', tmp_path)
     monkeypatch.setattr(ml, 'SAFE_CLEAN_PREFIX', tmp_path)
-    monkeypatch.setattr(ml, 'list_snapshots', lambda: [snap])
+    unpublished = snap.parent / 'snapshot_in_progress'
+    monkeypatch.setattr(ml, 'list_snapshots', lambda: [snap, unpublished])
     monkeypatch.setattr(ml, 'snapshot_complete', lambda p: True)
-    monkeypatch.setattr(ml, 'consolidate', lambda paths: snap)
+
+    def consolidate_published(paths):
+        assert paths == [snap]
+        return snap
+
+    monkeypatch.setattr(ml, 'consolidate', consolidate_published)
     monkeypatch.setattr(ml, 'save_state', lambda state: None)
     monkeypatch.setattr(ml, 'post_batches', lambda page: (0, 0, len(page)))
     initial = {'watermark': 900}

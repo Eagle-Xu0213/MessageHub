@@ -74,8 +74,6 @@
   };
 
   q('#new-item-inline').onclick = () => q('#new-item').click();
-  const hour = new Date().getHours();
-  q('#greeting').textContent = hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
 
   function captureLabel(data) {
     return (captureCopy[data?.phase] || captureCopy.unavailable)[0];
@@ -183,7 +181,7 @@
     const selected = (calendarItems || []).filter(item => deadlineDay(item) === selectedDay);
     q('#calendar-results').innerHTML = selected.length
       ? selected.map(item => '<button type="button" class="link" data-task="' + item.id + '">' + esc(title(item)) + '</button>').join('<br>')
-      : '<p>' + (calendarItems === null ? '正在读取待办截止日期…' : '这一天没有待办到期。') + '</p>';
+      : '<p>' + (calendarItems === null ? '正在读取待办截止日期…' : '这一天没有待办到期') + '</p>';
   }
 
   function shiftMonth(offset) {
@@ -231,6 +229,7 @@
     const request = ++homeRequest;
     const [state, result] = await Promise.all([capture(), get('/api/workbench/items').catch(() => null)]);
     if (request !== homeRequest) return;
+    q('.bento-capture').dataset.phase = state?.phase || 'unavailable';
     q('#capture-title').textContent = captureLabel(state);
     q('#capture-time').textContent = syncTime(state);
     q('#capture-bar').textContent = '查看运行状态 →';

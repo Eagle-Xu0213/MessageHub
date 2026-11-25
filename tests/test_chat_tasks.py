@@ -14,6 +14,8 @@ from messagehub.routers import tasks
 ORIGIN = 'http://127.0.0.1:8000'
 DRAFT = '/api/workbench/items/draft-from-messages'
 ITEMS = '/api/workbench/items'
+CATEGORIES = '/api/workbench/categories'
+BATCH_CATEGORY = ITEMS + '/batch-category'
 
 
 @pytest.fixture
@@ -133,3 +135,47 @@ def test_draft_validation_and_provider_failures(chat_client, monkeypatch):
     assert chat_client.post(DRAFT, json=selection).status_code == 502
     assert [url for url, _ in calls] == ['https://configured.invalid/v1/chat/completions']
     assert chat_client.get(ITEMS).json()['items'] == []
+
+
+def test_custom_categories_rename_delete_and_batch(chat_client):
+    category = chat_client.post(CATEGORIES, json={'name': '  项目跟进  '})
+    assert category.status_code == 201
+    category_url = f"{CATEGORIES}/{category.json()['id']}"
+    assert category.json()['name'] == '项目跟进'
+    assert chat_client.post(CATEGORIES, json={'name': '项目跟进'}).status_code == 409
+    assert chat_client.post(CATEGORIES, json={'name': '   '}).status_code == 400
+    one = chat_client.post(ITEMS, json={'title': '任务一', 'category': '项目跟进'}).json()['id']
+    two = chat_client.post(ITEMS, json={'title': '任务二', 'category': '报名填写'}).json()['id']
+    three = chat_client.post(ITEMS, json={'title': '任务三'}).json()['id']
+    assert chat_client.patch(f'{ITEMS}/{one}', json={'status': 'completed'}).status_code == 200
+    assert chat_client.put(category_url, json={'name': '跟踪'}).status_code == 200
+
+    def items():
+        return {entry['id']: (entry['category'], entry['status'])
+                for entry in chat_client.get(ITEMS).json()['items']}
+
+    assert items()[one] == ('跟踪', 'completed')
+    assert chat_client.patch(BATCH_CATEGORY, json={'task_ids': [two, 999], 'category': '跟踪'}).status_code == 409
+    assert items()[two] == ('报名填写', 'pending')
+    assert chat_client.patch(BATCH_CATEGORY, json={'task_ids': [one, two, two], 'category': '跟踪'}).json() == {'updated': 2}
+    assert items() == {one: ('跟踪', 'completed'), two: ('跟踪', 'pending'), three: ('', 'pending')}
+    assert chat_client.patch(BATCH_CATEGORY, json={'task_ids': [two], 'category': None}).json() == {'updated': 1}
+    entry = next(c for c in chat_client.get(CATEGORIES).json()['categories'] if c['name'] == '跟踪')
+    assert entry['task_count'] == 1
+    assert chat_client.delete(category_url).json() == {'updated': 1}
+    assert items()[one] == ('', 'completed')
+    assert chat_client.patch(BATCH_CATEGORY, json={'task_ids': [two], 'category': '跟踪'}).status_code == 409
+
+
+def test_ai_uses_custom_labels_and_rejects_stale_draft(chat_client, monkeypatch):
+    custom = chat_client.post(CATEGORIES, json={'name': '项目跟进'}).json()
+    selection = {'message_ids': [55]}
+    with monkeypatch.context() as patch:
+        calls = mock_provider(patch, 200, {'task': {'title': '交材料', 'category': '项目跟进'}})
+        draft = chat_client.post(DRAFT, json=selection).json()['draft']
+        assert draft['category'] == '项目跟进'
+        assert '项目跟进' in calls[0][1]['messages'][0]['content']
+    chat_client.delete(f"{CATEGORIES}/{custom['id']}")
+    assert chat_client.post(ITEMS, json={**draft, **selection}).status_code == 409
+    mock_provider(monkeypatch, 200, {'task': {'title': '交材料', 'category': '项目跟进'}})
+    assert chat_client.post(DRAFT, json=selection).json()['draft']['category'] is None

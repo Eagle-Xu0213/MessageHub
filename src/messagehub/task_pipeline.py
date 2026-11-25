@@ -215,6 +215,13 @@ def init_store(conn: sqlite3.Connection, baseline: bool = True) -> None:
         conn.execute("ALTER TABLE personal_tasks ADD COLUMN title TEXT")
     if "source_message_ids" not in columns:
         conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_message_ids TEXT")
+    conn.execute("""CREATE TABLE IF NOT EXISTS personal_task_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, rule_name TEXT UNIQUE)""")
+    if conn.execute("""INSERT OR IGNORE INTO task_pipeline_state VALUES ('categories_initialized', '1')""").rowcount:
+        conn.executemany("INSERT INTO personal_task_categories(name, rule_name) VALUES (?, ?)",
+                         [(name, name) for name in (*[label for label, _ in _CATEGORIES], '其他')])
+        conn.execute("""INSERT OR IGNORE INTO personal_task_categories(name)
+            SELECT DISTINCT category FROM personal_tasks WHERE category != ''""")
     conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_messages
         ON personal_tasks(source_message_ids) WHERE source_message_ids IS NOT NULL""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_active ON personal_tasks(status, deadline)")
@@ -288,6 +295,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
     baseline = conn.execute("SELECT value FROM task_pipeline_state WHERE name='baseline'").fetchone()
     base_time = _time(baseline[0]) if baseline else None
     rows = conn.execute("SELECT * FROM messages WHERE id>? ORDER BY id LIMIT ?", (int(state[0]), limit)).fetchall()
+    categories = dict(conn.execute("SELECT rule_name, name FROM personal_task_categories WHERE rule_name IS NOT NULL"))
     result = {"processed": 0, "created": 0, "completed": 0}
     with conn:
         for row in rows:
@@ -356,7 +364,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                             (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at,title)
                             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
                             (mention['id'], mention['conversation_id'], mention['conversation_name'], mention['sender_name'],
-                             mention['sent_at'], mention['text'], info['category'], info['deadline'], info['status'],
+                             mention['sent_at'], mention['text'], categories.get(info['category'], ''), info['deadline'], info['status'],
                              info['reason'], datetime.now(CN_TZ).isoformat(), source['text'].strip()[:200]))
                         result['created'] += cur.rowcount
             # Also handle the instruction arriving in a later capture batch.
@@ -374,12 +382,12 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                     info, source = matched
                     conn.execute('''UPDATE personal_tasks SET status=?,category=?,deadline=?,reason=?,title=?,updated_at=?
                         WHERE id=? AND status='review' AND title IS NULL''',
-                        (info['status'], info['category'], info['deadline'], info['reason'],
+                        (info['status'], categories.get(info['category'], ''), info['deadline'], info['reason'],
                          source['text'].strip()[:200], datetime.now(CN_TZ).isoformat(), previous_task['task_id']))
             if candidate:
                 cur = conn.execute("""INSERT OR IGNORE INTO personal_tasks
                     (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at,title)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (msg["id"], msg["conversation_id"], group, sender, msg["sent_at"], msg["text"], candidate["category"], candidate["deadline"], candidate["status"], candidate["reason"], datetime.now(CN_TZ).isoformat(), contextual_title))
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (msg["id"], msg["conversation_id"], group, sender, msg["sent_at"], msg["text"], categories.get(candidate["category"], ''), candidate["deadline"], candidate["status"], candidate["reason"], datetime.now(CN_TZ).isoformat(), contextual_title))
                 result["created"] += cur.rowcount
         if rows:
             conn.execute("UPDATE task_pipeline_state SET value=? WHERE name='cursor'", (str(rows[-1]["id"]),))

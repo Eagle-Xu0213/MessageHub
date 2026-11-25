@@ -27,6 +27,19 @@ def test_classification_and_no_generic_notices():
     assert classify(dict(base, text='@李四 请提交材料')) is None
 
 
+def test_automatic_categories_follow_rename_and_delete():
+    db = setup_db()
+    db.execute("UPDATE personal_task_categories SET name='项目交付' WHERE rule_name='材料提交'")
+    add(db, 1, '同事', '@张三 请提交测试报告')
+    assert process_batch(db)['created'] == 1
+    assert db.execute("SELECT category FROM personal_tasks WHERE message_id=1").fetchone()[0] == '项目交付'
+    db.execute("DELETE FROM personal_task_categories WHERE rule_name='材料提交'")
+    add(db, 2, '同事', '@张三 请上传另一份项目文档')
+    init_store(db)
+    assert process_batch(db)['created'] == 1
+    assert db.execute("SELECT category FROM personal_tasks WHERE message_id=2").fetchone()[0] == ''
+
+
 def test_progress_and_explicit_completion():
     db = setup_db()
     name = next(iter(personal.MY_SENDER_NAMES))

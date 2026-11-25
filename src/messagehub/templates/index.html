@@ -209,6 +209,17 @@
           <a href="/select">管理检测范围 →</a>
         </div>
 
+        <section class="glass panel settings" aria-labelledby="category-heading">
+          <h2 id="category-heading">待办分类</h2>
+          <form id="category-form">
+            <label>标签名称 <input type="text" name="name" maxlength="80" required></label>
+            <button class="btn primary" type="submit">添加标签</button>
+            <button class="btn" id="category-cancel" type="button" hidden>取消改名</button>
+          </form>
+          <p id="category-status" role="status"></p>
+          <ul id="category-list"></ul>
+        </section>
+
         <!-- AI enhancement -->
         <div class="glass panel settings">
           <h2>AI 增强（可选）</h2>
@@ -316,6 +327,16 @@
         <div id="error" class="error" role="alert"></div>
 
         <!-- Task items list -->
+        <button class="btn" id="batch-toggle" type="button" aria-expanded="false">批量设置标签</button>
+        <form class="glass panel" id="batch-category" hidden>
+          <div class="actions">
+            <button class="btn" id="batch-select-all" type="button">全选当前列表</button>
+            <span id="batch-count" role="status">已选 0 项</span>
+            <select name="category" aria-label="批量设置的标签"></select>
+            <button class="btn primary" type="submit" disabled>应用</button>
+          </div>
+          <p id="batch-status" role="status"></p>
+        </form>
         <section class="items" id="items" aria-live="polite"></section>
 
         <!-- Status line -->
@@ -347,13 +368,19 @@
       <label>
         类型
         <select name="category">
-          <option>材料提交</option>
-          <option>报名填写</option>
-          <option>会议活动</option>
-          <option>沟通确认</option>
-          <option selected>其他</option>
+          <option value="">未分类</option>
         </select>
       </label>
+      <div id="editor-new-category" hidden>
+        <label>新标签名称
+          <input id="editor-category-name" type="text" maxlength="80">
+        </label>
+        <div class="actions">
+          <button class="btn primary" id="editor-category-create" type="button">创建并选中</button>
+          <button class="btn" id="editor-category-cancel" type="button">取消新建</button>
+        </div>
+        <p id="editor-category-status" class="error" role="status"></p>
+      </div>
       <label>
         截止时间（可不填）
         <input type="datetime-local" name="deadline">
@@ -371,14 +398,14 @@
 const $=s=>document.querySelector(s), esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML};let items=[],view='pending',expanded=null,editing=null,contexts={};
 const active=x=>['pending','accepted','in_progress'].includes(x.status), time=x=>x.deadline?new Date(x.deadline).getTime():null;
 const overdue=x=>active(x)&&time(x)!==null&&time(x)<Date.now(), soon=x=>active(x)&&time(x)!==null&&time(x)>=Date.now()&&time(x)<=Date.now()+86400000;
-const category=x=>({'会议安排':'会议活动','沟通回复':'沟通确认'}[x]||x||'其他');
+const category=x=>x||'未分类';
 const bare=x=>/^@[^\s@，,。:：！!？?]+[\s，,。:：！!？?]*$/.test((x.text||'').trim());
 const title=x=>(x.title||(bare(x)?x.context_summary:null)||x.text||'未命名事项').trim().replace(/\s+/g,' ').slice(0,90);
 const label={pending:'待处理',accepted:'已接受',in_progress:'进行中',review:'待确认',notice:'重要通知',completed:'已完成',ignored:'已忽略',dismissed:'已忽略',archived:'已归档'};
 const reasonLabel = reason => reason === '提及本人，行动不明确' ? '提及了你，尚不明确需要做什么' : reason;
 const sourceLabels = {wechat: '微信', manual: '手动'};
-$('#source-filter').addEventListener('change', render);
-function render(){const platform=$('#source-filter').value;const visibleItems=platform?items.filter(x=>x.source_platform===platform):items;const metrics=[['overdue','已逾期',visibleItems.filter(overdue).length],['soon','即将截止',visibleItems.filter(soon).length],['pending','待处理',visibleItems.filter(active).length],['review','待确认',visibleItems.filter(x=>x.status==='review').length],['notice','重要通知',visibleItems.filter(x=>x.status==='notice').length]];$('#stats').innerHTML=metrics.map(([id,name,n])=>`<button class="stat ${view===id?'active':''} ${id==='overdue'||id==='soon'?'urgent':''}" data-view="${id}"><strong>${n}</strong>${name}</button>`).join('');const tabs=[['pending','待处理'],['review','待确认'],['notice','重要通知'],['history','历史记录']];$('#tabs').innerHTML=tabs.map(([id,n])=>`<button data-view="${id}" class="${view===id?'active':''}">${n}</button>`).join('');let list=visibleItems.filter(x=>view==='pending'?active(x):view==='overdue'?overdue(x):view==='soon'?soon(x):view==='history'?['completed','ignored','dismissed','archived'].includes(x.status):x.status===view);list.sort((a,b)=>view==='history'?(b.updated_at||'').localeCompare(a.updated_at||''):(time(a)??Infinity)-(time(b)??Infinity)||b.id-a.id);$('#items').innerHTML=list.length?list.map(x=>{let buttons=active(x)?[['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head"><button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`}).join(''):'<div class="empty">当前列表暂无事项</div>';}
+$('#source-filter').addEventListener('change', () => { resetBatchSelection(); render(); });
+function render(){const platform=$('#source-filter').value;const visibleItems=platform?items.filter(x=>x.source_platform===platform):items;const metrics=[['overdue','已逾期',visibleItems.filter(overdue).length],['soon','即将截止',visibleItems.filter(soon).length],['pending','待处理',visibleItems.filter(active).length],['review','待确认',visibleItems.filter(x=>x.status==='review').length],['notice','重要通知',visibleItems.filter(x=>x.status==='notice').length]];$('#stats').innerHTML=metrics.map(([id,name,n])=>`<button class="stat ${view===id?'active':''} ${id==='overdue'||id==='soon'?'urgent':''}" data-view="${id}"><strong>${n}</strong>${name}</button>`).join('');const tabs=[['pending','待处理'],['review','待确认'],['notice','重要通知'],['history','历史记录']];$('#tabs').innerHTML=tabs.map(([id,n])=>`<button data-view="${id}" class="${view===id?'active':''}">${n}</button>`).join('');let list=visibleItems.filter(x=>view==='pending'?active(x):view==='overdue'?overdue(x):view==='soon'?soon(x):view==='history'?['completed','ignored','dismissed','archived'].includes(x.status):x.status===view);list.sort((a,b)=>view==='history'?(b.updated_at||'').localeCompare(a.updated_at||''):(time(a)??Infinity)-(time(b)??Infinity)||b.id-a.id);$('#items').innerHTML=list.length?list.map(x=>{let buttons=active(x)?[['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head">${batchForm.hidden?'':`<input type="checkbox" aria-label="选择待办 ${x.id}" data-select-task="${x.id}" ${selectedTasks.has(x.id)?'checked':''} ${batchSaving?'disabled':''}>`}<button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`}).join(''):'<div class="empty">当前列表暂无事项</div>';updateBatchSelection(list);}
 let taskRequest = 0;
 let taskUpdates = 0;
 function taskRefreshBlocked() {
@@ -420,12 +447,19 @@ async function update(id, data) {
   }
 }
 
+let taskFeedbackTimer;
 function taskFeedback(message, undo) {
-  $('#task-feedback').hidden = false;
+  clearTimeout(taskFeedbackTimer);
+  const feedback = $('#task-feedback');
+  feedback.hidden = false;
   $('#task-feedback-text').textContent = message;
   const button = $('#undo-action');
   button.hidden = !undo;
   button.onclick = undo || null;
+  taskFeedbackTimer = setTimeout(() => {
+    feedback.hidden = true;
+    button.onclick = null;
+  }, 5000);
 }
 
 async function changeStatus(item, status) {
@@ -467,6 +501,261 @@ let draftMessageIds = null;
 const editor = $('#editor');
 const editorForm = $('#form');
 const saveItem = editorForm.querySelector('button[type="submit"]');
+const categoryURL = '/api/workbench/categories';
+const categoryForm = $('#category-form');
+const categoryStatus = $('#category-status');
+const batchForm = $('#batch-category');
+const selectedTasks = new Set();
+let editingCategory = null;
+let batchSaving = false;
+let visibleTasks = [];
+let editorLoad = 0;
+const editorCategory = editorForm.elements.category;
+const newCategoryFields = $('#editor-new-category');
+const newCategoryName = $('#editor-category-name');
+const newCategoryCreate = $('#editor-category-create');
+const newCategoryCancel = $('#editor-category-cancel');
+const newCategoryStatus = $('#editor-category-status');
+let lastEditorCategory = '';
+
+async function categoryRequest(url, method = 'GET', payload) {
+  const options = {method, signal: AbortSignal.timeout(8000)};
+  if (payload !== undefined) {
+    options.headers = {'Content-Type': 'application/json'};
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch(url, options);
+  const data = await response.json();
+  if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : '操作失败，请重试。');
+  return data;
+}
+
+function categoryOptions(select, categories, current, placeholder = false) {
+  select.replaceChildren(new Option('未分类', ''));
+  for (const {name} of categories) select.add(new Option(name, name));
+  if (placeholder) {
+    select.prepend(new Option('选择标签', ''));
+    select.options[0].disabled = true;
+  } else if (current && !categories.some(entry => entry.name === current)) {
+    select.add(new Option(current + '（已不可用，请重新选择）', current));
+  }
+  if (placeholder) select.selectedIndex = 0;
+  else select.value = current || '';
+}
+
+function editorCategoryOptions(categories, current) {
+  categoryOptions(editorCategory, categories, current);
+  const createOption = new Option('＋ 新建标签…');
+  createOption.dataset.createCategory = 'true';
+  editorCategory.add(createOption);
+  lastEditorCategory = editorCategory.value;
+}
+
+function closeNewCategory() {
+  newCategoryFields.hidden = true;
+  newCategoryName.value = '';
+  newCategoryStatus.textContent = '';
+}
+
+editorCategory.onchange = () => {
+  if (editorCategory.selectedOptions[0]?.dataset.createCategory) {
+    editorCategory.value = lastEditorCategory;
+    newCategoryFields.hidden = false;
+    newCategoryName.focus();
+  } else {
+    lastEditorCategory = editorCategory.value;
+    closeNewCategory();
+  }
+};
+newCategoryCancel.onclick = () => {
+  closeNewCategory();
+  editorCategory.focus();
+};
+newCategoryCreate.onclick = async () => {
+  if (newCategoryCreate.disabled) return;
+  const name = newCategoryName.value.trim();
+  if (!name) {
+    newCategoryStatus.textContent = '请输入标签名称。';
+    newCategoryName.focus();
+    return;
+  }
+  newCategoryStatus.textContent = '';
+  for (const control of [newCategoryName, newCategoryCreate, newCategoryCancel, editorCategory, saveItem, $('#cancel')]) {
+    control.disabled = true;
+  }
+  try {
+    const result = await categoryRequest(categoryURL, 'POST', {name});
+    const existingOption = Array.from(editorCategory.options).find(option =>
+      option.value === result.name && !option.dataset.createCategory);
+    if (existingOption) existingOption.textContent = result.name;
+    else editorCategory.add(new Option(result.name, result.name), editorCategory.options.length - 1);
+    editorCategory.value = result.name;
+    lastEditorCategory = result.name;
+    closeNewCategory();
+  } catch (error) {
+    newCategoryStatus.textContent = error.message;
+  } finally {
+    for (const control of [newCategoryName, newCategoryCreate, newCategoryCancel, editorCategory, saveItem, $('#cancel')]) {
+      control.disabled = false;
+    }
+    (newCategoryFields.hidden ? editorCategory : newCategoryName).focus();
+  }
+};
+newCategoryName.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
+  newCategoryCreate.click();
+});
+
+function resetCategoryForm() {
+  editingCategory = null;
+  categoryForm.reset();
+  categoryForm.querySelector('[type="submit"]').textContent = '添加标签';
+  $('#category-cancel').hidden = true;
+}
+
+async function showCategories() {
+  try {
+    const {categories} = await categoryRequest(categoryURL);
+    const list = $('#category-list');
+    list.replaceChildren();
+    for (const entry of categories) {
+      const row = document.createElement('li');
+      row.className = 'actions';
+      const name = document.createElement('span');
+      name.textContent = entry.name + '（' + entry.task_count + ' 项）';
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'btn';
+      rename.textContent = '改名';
+      rename.onclick = () => {
+        editingCategory = entry.id;
+        categoryForm.elements.name.value = entry.name;
+        categoryForm.querySelector('[type="submit"]').textContent = '保存名称';
+        $('#category-cancel').hidden = false;
+        categoryForm.elements.name.focus();
+      };
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn';
+      remove.textContent = '删除';
+      remove.onclick = async () => {
+        if (!confirm('删除「' + entry.name + '」？当前有 ' + entry.task_count + ' 项待办将移到「未分类」。')) return;
+        remove.disabled = true;
+        try {
+          const result = await categoryRequest(categoryURL + '/' + entry.id, 'DELETE');
+          if (editingCategory === entry.id) resetCategoryForm();
+          categoryStatus.textContent = '已删除标签，' + result.updated + ' 项移到未分类。';
+          await Promise.all([showCategories(), load()]);
+        } catch (error) {
+          categoryStatus.textContent = error.message;
+        } finally {
+          remove.disabled = false;
+        }
+      };
+      row.append(name, rename, remove);
+      list.append(row);
+    }
+  } catch (error) {
+    categoryStatus.textContent = error.message;
+  }
+}
+
+categoryForm.onsubmit = async event => {
+  event.preventDefault();
+  const submit = categoryForm.querySelector('[type="submit"]');
+  if (submit.disabled) return;
+  const name = categoryForm.elements.name.value;
+  const id = editingCategory;
+  submit.disabled = true;
+  try {
+    await categoryRequest(id ? categoryURL + '/' + id : categoryURL, id ? 'PUT' : 'POST', {name});
+    resetCategoryForm();
+    categoryStatus.textContent = id ? '已更新标签名称。' : '已添加标签。';
+    await Promise.all([showCategories(), load()]);
+  } catch (error) {
+    categoryStatus.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+};
+$('#category-cancel').onclick = resetCategoryForm;
+
+function updateBatchSelection(list = visibleTasks) {
+  visibleTasks = list;
+  const visibleIds = new Set(list.map(item => item.id));
+  for (const id of selectedTasks) if (!visibleIds.has(id)) selectedTasks.delete(id);
+  $('#batch-count').textContent = '已选 ' + selectedTasks.size + ' 项';
+  $('#batch-select-all').disabled = batchSaving || !list.length;
+  batchForm.elements.category.disabled = batchSaving;
+  batchForm.querySelector('[type="submit"]').disabled =
+    batchSaving || !selectedTasks.size || batchForm.elements.category.selectedIndex <= 0;
+}
+
+function resetBatchSelection() {
+  selectedTasks.clear();
+  $('#batch-status').textContent = '';
+}
+
+function closeBatch() {
+  resetBatchSelection();
+  batchForm.hidden = true;
+  $('#batch-toggle').setAttribute('aria-expanded', 'false');
+  render();
+}
+
+$('#batch-toggle').onclick = async () => {
+  if (batchSaving) return;
+  if (!batchForm.hidden) return closeBatch();
+  batchForm.hidden = false;
+  $('#batch-toggle').setAttribute('aria-expanded', 'true');
+  categoryOptions(batchForm.elements.category, [], '', true);
+  render();
+  try {
+    const {categories} = await categoryRequest(categoryURL);
+    if (!batchForm.hidden) categoryOptions(batchForm.elements.category, categories, '', true);
+  } catch (error) {
+    $('#batch-status').textContent = error.message;
+  }
+};
+$('#batch-select-all').onclick = () => {
+  for (const item of visibleTasks) selectedTasks.add(item.id);
+  render();
+};
+$('#items').addEventListener('change', event => {
+  const id = Number(event.target.dataset.selectTask);
+  if (!id || batchSaving) return;
+  if (event.target.checked) selectedTasks.add(id);
+  else selectedTasks.delete(id);
+  updateBatchSelection();
+});
+batchForm.elements.category.onchange = () => updateBatchSelection();
+document.addEventListener('click', event => {
+  if (event.target.closest('[data-view], [data-task-view]')) resetBatchSelection();
+}, true);
+batchForm.onsubmit = async event => {
+  event.preventDefault();
+  if (batchForm.querySelector('[type="submit"]').disabled) return;
+  const payload = {task_ids: [...selectedTasks], category: batchForm.elements.category.value || null};
+  batchSaving = true;
+  render();
+  try {
+    const result = await categoryRequest('/api/workbench/items/batch-category', 'PATCH', payload);
+    closeBatch();
+    await load();
+    taskFeedback('已更新 ' + result.updated + ' 项的标签。');
+  } catch (error) {
+    $('#batch-status').textContent = error.message;
+    try {
+      const {categories} = await categoryRequest(categoryURL);
+      categoryOptions(batchForm.elements.category, categories, '', true);
+    } catch {}
+    await load();
+  } finally {
+    batchSaving = false;
+    render();
+  }
+};
 
 function openEditor(item, messageIds = null) {
   if (editor.open) return;
@@ -474,10 +763,28 @@ function openEditor(item, messageIds = null) {
   draftMessageIds = messageIds;
   $('#form-title').textContent = messageIds ? '确认任务草稿' : editing ? '编辑事项' : '新建事项';
   editorForm.elements.title.value = item ? item.title || title(item) : '';
-  editorForm.elements.category.value = category(item?.category);
+  const currentCategory = item?.category || '';
+  closeNewCategory();
+  categoryOptions(editorCategory, [], currentCategory);
+  editorCategory.disabled = true;
   editorForm.elements.deadline.value = item?.deadline?.slice(0, 16) || '';
   $('#form-error').textContent = '';
   editor.showModal();
+  const request = ++editorLoad;
+  saveItem.disabled = true;
+  categoryRequest(categoryURL).then(({categories}) => {
+    if (request === editorLoad) editorCategoryOptions(categories, currentCategory);
+  }).catch(error => {
+    if (request === editorLoad) {
+      editorCategoryOptions([], currentCategory);
+      $('#form-error').textContent = error.message;
+    }
+  }).finally(() => {
+    if (request === editorLoad) {
+      editorCategory.disabled = false;
+      saveItem.disabled = false;
+    }
+  });
 }
 
 $('#new-item').onclick = () => openEditor();
@@ -488,8 +795,13 @@ editor.addEventListener('cancel', event => {
 editorForm.onsubmit = async event => {
   event.preventDefault();
   if (saveItem.disabled) return;
+  if (!newCategoryFields.hidden) {
+    newCategoryStatus.textContent = '请先创建标签，或取消新建。';
+    newCategoryName.focus();
+    return;
+  }
   const {elements} = editorForm;
-  const data = {title: elements.title.value, category: elements.category.value,
+  const data = {title: elements.title.value, category: elements.category.value || null,
     deadline: elements.deadline.value || null};
   if (draftMessageIds) data.message_ids = draftMessageIds;
   saveItem.disabled = true;
@@ -522,6 +834,13 @@ editorForm.onsubmit = async event => {
     }
   } catch (error) {
     $('#form-error').textContent = error.name === 'TimeoutError' ? '保存超时，请重试。' : error.message;
+    if (error.message.includes('标签已不可用')) {
+      try {
+        const {categories} = await categoryRequest(categoryURL);
+        editorCategoryOptions(categories, data.category);
+        elements.category.focus();
+      } catch {}
+    }
   } finally {
     saveItem.disabled = false;
     $('#cancel').disabled = false;
@@ -534,7 +853,7 @@ async function pollUpdate(){try{const r=await fetch('/api/update/status');if(!r.
 $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{const r=await fetch('/api/update',{method:'POST'});const d=await r.json();if(!r.ok)throw Error(d.detail||'无法启动更新');pollUpdate()}catch(e){$('#update-message').textContent=e.message;$('#update-button').disabled=false}};
 (async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();await loadItemContext(x.id);document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
 </script>
-<script src="/static/dashboard.js?v=3.4.0-chat-timeout"></script>
+<script src="/static/dashboard.js?v=3.5.0"></script>
 <script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>

@@ -48,6 +48,7 @@
     }
     if (page === 'home') home();
     if (page === 'system') system();
+    if (page === 'settings') showCategories();
     if (page === 'messages') loadChats();
     if (page === 'tasks' && taskView) {
       view = taskView;

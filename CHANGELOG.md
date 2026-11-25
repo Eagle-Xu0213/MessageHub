@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-11-25
+
+- 待办分类支持新增、改名和删除标签，也可在待办列表中批量设置标签。
+- 编辑事项时可直接新建并选中标签。
+- 待办操作提示在 5 秒后自动隐藏。
+
 ## [3.4.0] - 2026-11-25
 
 - 「消息」页支持浏览最近的聊天记录，勾选文字消息交给已配置的 AI 服务。可编辑并确认保存一条待办，也可在待办里查看当时勾选的原文。
@@ -124,7 +130,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.4.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...v3.3.0
 [3.2.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...v3.2.1

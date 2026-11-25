@@ -48,6 +48,7 @@
     }
     if (page === 'home') home();
     if (page === 'system') system();
+    if (page === 'messages') loadChats();
     if (page === 'tasks' && taskView) {
       view = taskView;
       expanded = null;
@@ -289,6 +290,190 @@
       '最近错误：' + (scheduler?.last_error || '暂无'),
     ].map(line => '<p>' + esc(line) + '</p>').join('');
   }
+
+  const chatSelect = q('#chat-conversation');
+  const chatList = q('#chat-message-list');
+  const olderButton = q('#chat-older');
+  const generateButton = q('#chat-generate');
+  const chatStatus = q('#chat-status');
+  const generateStatus = q('#chat-generate-status');
+  const aiSettings = q('#chat-ai-settings');
+  const maxSelected = 20;
+  const selected = new Set();
+  let conversations = new Map();
+  let loadingChats = false;
+  let chatRequest = 0;
+  let beforeId = null;
+  let generating = false;
+
+  async function loadChats() {
+    if (loadingChats) return;
+    loadingChats = true;
+    if (!conversations.size) chatStatus.textContent = '正在读取聊天列表…';
+    try {
+      const data = await get('/api/messages/conversations');
+      const current = chatSelect.value;
+      const nameCounts = new Map();
+      conversations = new Map();
+      for (const chat of data.conversations) {
+        const key = JSON.stringify([chat.source_platform, chat.conversation_id]);
+        const name = chat.conversation_name || chat.conversation_id;
+        const platform = {wechat: '微信', manual: '导入'}[chat.source_platform] || chat.source_platform;
+        const label = name + ' · ' + platform;
+        conversations.set(key, {...chat, label});
+        nameCounts.set(label, (nameCounts.get(label) || 0) + 1);
+      }
+      chatSelect.replaceChildren(new Option(conversations.size ? '请选择聊天' : '暂无已保存的聊天', ''));
+      for (const [key, chat] of conversations) {
+        const label = nameCounts.get(chat.label) > 1 ? chat.label + ' · ' + chat.conversation_id : chat.label;
+        chatSelect.add(new Option(label, key));
+      }
+      if (conversations.has(current)) chatSelect.value = current;
+      else if (current) openChat();
+      if (!current) chatStatus.textContent = conversations.size ? '' : '导入消息或完成微信同步后，这里会显示聊天。';
+    } catch {
+      chatStatus.textContent = '聊天列表加载失败，请重新打开「消息」页重试。';
+    } finally {
+      loadingChats = false;
+    }
+  }
+
+  function updateChatSelection() {
+    q('#chat-selected').textContent = '已选 ' + selected.size + ' / ' + maxSelected + ' 条';
+    generateButton.disabled = generating || !selected.size;
+    for (const input of chatList.querySelectorAll('input[type="checkbox"]')) {
+      input.checked = selected.has(Number(input.value));
+      input.disabled = generating || (!input.checked && selected.size >= maxSelected);
+    }
+  }
+
+  function chatMessage(message) {
+    const row = document.createElement('li');
+    row.className = 'chat-message';
+    const selectable = (message.message_type || 'text') === 'text' && message.text.trim();
+    const entry = document.createElement(selectable ? 'label' : 'div');
+    if (selectable) {
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = message.id;
+      entry.append(input);
+    } else {
+      entry.className = 'chat-message-static';
+    }
+    const body = document.createElement('span');
+    const meta = document.createElement('span');
+    meta.className = 'chat-message-meta muted';
+    meta.textContent = (message.sender_name || '未知发送者') + ' · ' +
+      ((message.sent_at || '').replace('T', ' ').slice(0, 16) || '时间未知');
+    const content = document.createElement('span');
+    content.className = 'chat-message-text';
+    content.textContent = message.text || '暂无文字内容';
+    body.append(meta, content);
+    entry.append(body);
+    row.append(entry);
+    return row;
+  }
+
+  async function loadChatMessages(chat, cursor, request) {
+    const query = new URLSearchParams({source_platform: chat.source_platform, conversation_id: chat.conversation_id});
+    if (cursor !== null) query.set('before_id', cursor);
+    olderButton.disabled = true;
+    chatStatus.textContent = '正在读取聊天记录…';
+    try {
+      const data = await get('/api/messages/recent?' + query);
+      if (request !== chatRequest) return;
+      q('#chat-history').hidden = !data.messages.length && !chatList.children.length;
+      chatStatus.textContent = q('#chat-history').hidden ? '该聊天暂无消息。' : '';
+      const previousHeight = chatList.scrollHeight;
+      const previousTop = chatList.scrollTop;
+      chatList.prepend(...data.messages.map(chatMessage));
+      chatList.scrollTop = cursor === null ? chatList.scrollHeight :
+        previousTop + chatList.scrollHeight - previousHeight;
+      beforeId = data.before_id;
+      olderButton.hidden = beforeId === null;
+      updateChatSelection();
+    } catch {
+      if (request === chatRequest) chatStatus.textContent = '聊天记录加载失败，请刷新聊天重试。';
+    } finally {
+      if (request === chatRequest) olderButton.disabled = false;
+    }
+  }
+
+  function openChat() {
+    const request = ++chatRequest;
+    beforeId = null;
+    generating = false;
+    selected.clear();
+    chatList.replaceChildren();
+    q('#chat-history').hidden = true;
+    olderButton.hidden = true;
+    generateStatus.textContent = '';
+    aiSettings.hidden = true;
+    chatStatus.textContent = '';
+    const chat = conversations.get(chatSelect.value);
+    if (chat) loadChatMessages(chat, null, request);
+  }
+
+  chatSelect.onchange = openChat;
+  aiSettings.addEventListener('click', () => {
+    requestAnimationFrame(() => q('#llm-settings').scrollIntoView({block: 'center'}));
+  });
+  q('#chat-refresh').onclick = () => {
+    if (chatSelect.value) openChat();
+    loadChats();
+  };
+  olderButton.onclick = () => loadChatMessages(conversations.get(chatSelect.value), beforeId, chatRequest);
+  chatList.onchange = event => {
+    if (event.target.type !== 'checkbox') return;
+    const id = Number(event.target.value);
+    if (!event.target.checked) selected.delete(id);
+    else if (selected.size < maxSelected) selected.add(id);
+    generateStatus.textContent = '';
+    updateChatSelection();
+  };
+  document.addEventListener('chat-task-saved', () => {
+    selected.clear();
+    generateStatus.textContent = '';
+    updateChatSelection();
+  });
+  generateButton.onclick = async () => {
+    if (generating || !selected.size) return;
+    const request = chatRequest;
+    const ids = [...selected];
+    generating = true;
+    updateChatSelection();
+    generateStatus.textContent = '正在整理所选消息…';
+    aiSettings.hidden = true;
+    try {
+      const response = await fetch('/api/workbench/items/draft-from-messages', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({message_ids: ids}),
+        signal: AbortSignal.timeout(105000),
+      });
+      const data = await response.json();
+      if (request !== chatRequest || page !== 'messages') return;
+      if (!response.ok) {
+        aiSettings.hidden = data.code !== 'ai_disabled';
+        throw new Error(typeof data.detail === 'string' ? data.detail : '生成失败，请重试。');
+      }
+      if (data.draft) {
+        generateStatus.textContent = '';
+        openEditor(data.draft, ids);
+      } else {
+        generateStatus.textContent = '选中的消息里没有明确待办，可以补选相关消息后再试。';
+      }
+    } catch (error) {
+      if (request === chatRequest) generateStatus.textContent = error.name === 'TimeoutError' ?
+        'AI 响应超时，请重试。' : error.message || '生成失败，请重试。';
+    } finally {
+      if (request === chatRequest) {
+        generating = false;
+        if (page !== 'messages') generateStatus.textContent = '';
+        updateChatSelection();
+      }
+    }
+  };
 
   q('#search-form').onsubmit = async event => {
     event.preventDefault();

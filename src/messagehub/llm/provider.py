@@ -11,6 +11,7 @@ import os
 import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from urllib.parse import urlsplit
 
 # 显式定位项目根 .env，避免工作目录不同导致读不到配置
 try:
@@ -101,7 +102,8 @@ class LLMProvider:
         return out
 
     def chat_json(self, prompt: str, timeout: float = 60.0,
-                  temperature: float = 0.2, retries: int = 2) -> Optional[dict]:
+                  temperature: float = 0.2, retries: int = 2, *,
+                  primary_only: bool = False) -> Optional[dict]:
         """按降级链请求一次 JSON 输出；全部失败返回 None。
 
         这是全项目唯一的 LLM JSON 调用入口（work_brief 等模块不得自建副本）。
@@ -114,20 +116,23 @@ class LLMProvider:
         except ImportError:
             return None
 
+        attempts = ([(self._endpoint(), {"Authorization": f"Bearer {self.api_key}"},
+                      self.model, temperature)] if primary_only else self._attempts())
         for round_no in range(max(1, retries + 1)):
             if round_no:
                 import time as _time
                 _time.sleep(2 * round_no)  # 限流退避：2s、4s
-            for ep, hdr, model, temp in self._attempts():
+            for ep, hdr, model, temp in attempts:
                 try:
-                    with httpx.Client(timeout=timeout) as c:
+                    local_primary = primary_only and urlsplit(ep).hostname in ("127.0.0.1", "localhost", "::1")
+                    with httpx.Client(timeout=timeout, trust_env=not local_primary) as c:
                         r = c.post(
                             ep, headers=hdr,
                             json={"model": model,
                                   "messages": [{"role": "user", "content": prompt}],
                                   "temperature": temp},
                         )
-                        if r.status_code == 429:
+                        if r.status_code == 429 and not primary_only:
                             print(f"[LLM] {model} 配额/限流，切换到下一个服务")
                             continue
                         r.raise_for_status()
@@ -136,11 +141,13 @@ class LLMProvider:
 
                     data = _extract_json(content)
                     if not data:
-                        print(f"[LLM] 模型 {model} 输出无法解析为 JSON：{content[:120]!r}")
+                        if not primary_only:
+                            print(f"[LLM] 模型 {model} 输出无法解析为 JSON：{content[:120]!r}")
                         continue
                     return data
                 except Exception as e:
-                    print(f"[LLM] 模型 {model} 调用失败：{type(e).__name__}: {e}")
+                    if not primary_only:
+                        print(f"[LLM] 模型 {model} 调用失败：{type(e).__name__}: {e}")
         return None
 
     def _endpoint(self) -> str:

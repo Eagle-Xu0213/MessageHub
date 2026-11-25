@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-25
+
+- 「消息」页支持浏览最近的聊天记录，勾选文字消息交给已配置的 AI 服务。可编辑并确认保存一条待办，也可在待办里查看当时勾选的原文。
+- 本机 AI 接口通过直连访问。生成任务支持等待较慢的模型响应，后端超时延长至 90 秒。
+
 ## [3.3.0] - 2026-11-25
 
 - 新增「纸面」外观，统一工作台、待办、消息搜索、设置、检测范围和实时接入页，并在宽屏上并排展示事项、日历和运行概览。首次打开默认使用纸面，已保存的皮肤选择继续生效。
@@ -119,7 +124,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...v3.3.0
 [3.2.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...v3.2.0

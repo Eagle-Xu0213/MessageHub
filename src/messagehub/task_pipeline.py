@@ -213,6 +213,10 @@ def init_store(conn: sqlite3.Connection, baseline: bool = True) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(personal_tasks)")}
     if "title" not in columns:
         conn.execute("ALTER TABLE personal_tasks ADD COLUMN title TEXT")
+    if "source_message_ids" not in columns:
+        conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_message_ids TEXT")
+    conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_messages
+        ON personal_tasks(source_message_ids) WHERE source_message_ids IS NOT NULL""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_active ON personal_tasks(status, deadline)")
     conn.execute("""CREATE TABLE IF NOT EXISTS personal_task_deliveries (
         task_id INTEGER NOT NULL, deadline TEXT NOT NULL, channel TEXT NOT NULL,
@@ -249,7 +253,7 @@ def initialize_database(db_path: Path) -> None:
                 sender_name TEXT NOT NULL, sent_at TEXT NOT NULL, text TEXT NOT NULL,
                 category TEXT NOT NULL, deadline TEXT, status TEXT NOT NULL,
                 reason TEXT NOT NULL, completion_message_id INTEGER, updated_at TEXT NOT NULL,
-                title TEXT, FOREIGN KEY(message_id) REFERENCES messages(id))""")
+                title TEXT, source_message_ids TEXT, FOREIGN KEY(message_id) REFERENCES messages(id))""")
             names = [r[1] for r in task_info if r[1] != 'title']
             columns = ','.join(names)
             title_expr = 'title' if any(r[1] == 'title' for r in task_info) else 'NULL'
@@ -301,7 +305,9 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
             if sender in personal.MY_SENDER_NAMES:
                 text = (msg["text"] or "").strip()
                 if _DONE.search(text) and not _NOT_DONE.search(text):
-                    candidates = conn.execute("SELECT id,text FROM personal_tasks WHERE conversation_id=? AND status IN ('pending','accepted','in_progress')", (msg["conversation_id"],)).fetchall()
+                    candidates = conn.execute("""SELECT id,text FROM personal_tasks
+                        WHERE conversation_id=? AND source_message_ids IS NULL
+                        AND status IN ('pending','accepted','in_progress')""", (msg["conversation_id"],)).fetchall()
                     clauses = [part for part in re.split(r'[，,。；;！？!?\n]', text) if _DONE.search(part)]
                     matches = [task for task in candidates if any(_same_task(part, task["text"]) for part in clauses)]
                     if len(matches) == 1:
@@ -310,7 +316,9 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                 elif _ACK.match(text):
                     # A short acknowledgement is attributable only when there is
                     # exactly one active candidate in this conversation and it is recent.
-                    candidates = conn.execute("SELECT id,sent_at FROM personal_tasks WHERE conversation_id=? AND status='pending'", (msg["conversation_id"],)).fetchall()
+                    candidates = conn.execute("""SELECT id,sent_at FROM personal_tasks
+                        WHERE conversation_id=? AND source_message_ids IS NULL AND status='pending'""",
+                        (msg["conversation_id"],)).fetchall()
                     if len(candidates) == 1:
                         task_time = _time(candidates[0]["sent_at"])
                         if timestamp and task_time and timedelta(0) <= timestamp - task_time <= timedelta(minutes=10):

@@ -9,6 +9,8 @@ import sqlite3
 
 from messagehub.config import DB_PATH
 
+MESSAGE_TIME_SQL = "COALESCE(CASE WHEN sent_at GLOB '????-??-??*' THEN julianday(sent_at) END, 0)"
+
 
 def get_db() -> sqlite3.Connection:
     """简单 SQLite 连接。
@@ -131,6 +133,11 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     ):
         if col not in cols:
             cur.execute(f"ALTER TABLE messages ADD COLUMN {col} {ctype}")
+    # Building the index can spill into a Windows temp directory SQLite cannot open.
+    # Keep the sort in memory on this short-lived migration connection.
+    cur.execute("PRAGMA temp_store=MEMORY")
+    cur.execute(f"""CREATE INDEX IF NOT EXISTS idx_messages_conversation_time
+        ON messages(source_platform, conversation_id, {MESSAGE_TIME_SQL} DESC, id DESC)""")
     # tasks 表
     cur.execute("PRAGMA table_info(tasks)")
     tcols = {r[1] for r in cur.fetchall()}

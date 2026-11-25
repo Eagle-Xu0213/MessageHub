@@ -11,7 +11,7 @@
   # 批量：含 messages 数组的 JSON 文件
   python scripts/push_message.py --file messages.json --wrapper messages
 
-任何能拿到微信 / QQ 新消息的工具，都可以照这个格式调用即可实时入库。
+任何能拿到微信 新消息的工具，都可以照这个格式调用即可实时入库。
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def main() -> int:
     ap.add_argument("--chat-id", default=None, help="会话 ID（稳定去重建议提供）")
     ap.add_argument("--sender", default="unknown", help="发送者")
     ap.add_argument("--text", default=None, help="消息正文")
-    ap.add_argument("--platform", default="wechat", choices=["wechat", "qq", "other"])
+    ap.add_argument("--platform", default="wechat", choices=["wechat", "other"])
     ap.add_argument("--sent-at", default=None, help="消息时间 ISO8601；不传则用采集时刻")
     ap.add_argument("--msg-id", default=None, help="平台消息 ID（有则按 ID 精确去重）")
     ap.add_argument("--file", default=None, help="批量文件（.jsonl 或 .json）")

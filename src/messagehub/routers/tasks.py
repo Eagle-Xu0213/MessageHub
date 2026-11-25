@@ -41,25 +41,19 @@ def _context_summary(conn, task):
     anchor = _time(task['sent_at'])
     if not anchor:
         return None
-    fields = '*'
-    anchor_row = conn.execute('SELECT * FROM messages WHERE id=?', (task['message_id'],)).fetchone()
-    if not anchor_row:
+    anchor_message = conn.execute("SELECT * FROM messages WHERE id=?", (task["message_id"],)).fetchone()
+    if not anchor_message:
         return None
-    anchor_message = dict(anchor_row)
-    after = conn.execute(f'''SELECT {fields} FROM messages WHERE conversation_id=? AND id>?
+    after = conn.execute('''SELECT * FROM messages WHERE conversation_id=? AND id>?
         ORDER BY id ASC LIMIT 4''', (task['conversation_id'], task['message_id'])).fetchall()
-    before = conn.execute(f'''SELECT {fields} FROM messages WHERE conversation_id=? AND id<?
+    before = conn.execute('''SELECT * FROM messages WHERE conversation_id=? AND id<?
         ORDER BY id DESC LIMIT 4''', (task['conversation_id'], task['message_id'])).fetchall()
 
     def fragments(rows):
         result = []
         for row in rows:
-            message = dict(row)
-            if anchor_message.get("source_platform") == "qq" or message.get("source_platform") == "qq":
-                from messagehub.task_pipeline import same_qq_sender
-
-                if not same_qq_sender(anchor_message, message):
-                    break
+            if dict(row).get('source_platform') != dict(anchor_message).get('source_platform'):
+                break
             sent = _time(row['sent_at'])
             if row['sender_name'] != task['sender_name'] or not sent or abs((sent - anchor).total_seconds()) > 300:
                 break

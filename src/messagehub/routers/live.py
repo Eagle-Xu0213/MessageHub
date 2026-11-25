@@ -98,7 +98,7 @@ async def live_stream(request: Request, since: int = 0):
 
 @router.get("/api/live/probe")
 async def live_probe():
-    """只读探测微信/QQ 窗口可读性 + 结构诊断，不返回任何聊天正文。
+    """只读探测微信 窗口可读性 + 结构诊断，不返回任何聊天正文。
 
     UIA 正文采集已判定不可行（微信 4.2 自绘层），此接口仅保留只读结构诊断用途。
     """
@@ -150,7 +150,7 @@ async def live_inject(payload: dict):
 async def live_ingest(request: Request):
     """标准实时接入点：外部采集工具把新消息 POST 进来，立即入库并推送到 SSE 流。
 
-    这是第一阶段真正稳定的通道，不依赖微信/QQ 客户端的控件结构。
+    这是第一阶段真正稳定的通道，不依赖微信 客户端的控件结构。
     支持三种请求体：
       {...}                        单条消息
       [{...}, {...}]               批量消息

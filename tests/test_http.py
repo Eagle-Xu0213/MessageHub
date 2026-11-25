@@ -33,7 +33,7 @@ def sample_file(tmp_path):
     f = tmp_path / "sample.jsonl"
     content = "\n".join([
         '{"source_platform":"wechat","source_method":"manual_import","conversation_id":"g1","conversation_name":"办公室群","sender_name":"主任","sent_at":"2026-11-13T09:00:00+08:00","text":"请今天17:00前提交总结"}',
-        '{"source_platform":"qq","source_method":"manual_import","conversation_id":"g2","conversation_name":"志愿者群","sender_name":"组长","sent_at":"2026-11-13T10:00:00+08:00","text":"周六活动报名明天下午5点截止"}',
+        '{"source_platform":"manual","source_method":"manual_import","conversation_id":"g2","conversation_name":"志愿者群","sender_name":"组长","sent_at":"2026-11-13T10:00:00+08:00","text":"周六活动报名明天下午5点截止"}',
         '{"source_platform":"wechat","source_method":"manual_import","conversation_id":"g1","conversation_name":"办公室群","sender_name":"小李","sent_at":"2026-11-13T09:30:00+08:00","text":"收到，马上提交"}',
     ])
     f.write_text(content, encoding="utf-8")

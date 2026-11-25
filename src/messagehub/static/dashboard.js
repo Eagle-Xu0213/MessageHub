@@ -220,7 +220,7 @@
       const time = item.deadline ? '截止 ' + item.deadline.replace('T', ' ').slice(0, 16) : '无截止时间';
       return '<div class="home-task"><button class="check" data-complete="' + item.id +
         '" aria-label="完成事项"></button><button class="task-open" data-task="' + item.id + '">' +
-        esc(title(item)) + '<small>' + esc(due + time + ' · ' + ((item.source_platform === 'qq' ? 'QQ · ' : item.source_platform === 'wechat' ? '微信 · ' : '') + (item.conversation_name || '手动创建'))) +
+        esc(title(item)) + '<small>' + esc(due + time + ' · ' + ((item.source_platform === 'wechat' ? '微信 · ' : '') + (item.conversation_name || '手动创建'))) +
         '</small></button><span aria-hidden="true">›</span></div>';
     }).join('');
   }
@@ -276,39 +276,18 @@
   });
 
   async function system() {
-    const [health, scheduler, state, qq] = await Promise.all([
+    const [health, scheduler, state] = await Promise.all([
       get('/api/health').catch(() => null),
       get('/api/personal-tasks/status').catch(() => null),
       capture(),
-      get('/api/qq/status').catch(() => null),
     ]);
-    const qqLabels = {disabled: '未启用', stopped: '等待 QQ 引擎连接', waiting_login: '等待 QQ 登录',
-      waiting_handshake: '等待 OneBot 连接', restarting: 'QQ 引擎正在重启', connected: '已连接', disconnected: '已断线'};
-    const qqTime = timestamp => new Date(timestamp).toLocaleString();
-    const qqDisconnect = {peer_closed: 'QQ 引擎已断开连接', transport_lost: '连接意外中断',
-      config_changed: '本地配置变更', protocol_error: 'OneBot 协议异常',
-      receiver_stopped: '本机接收服务已停止', receiver_error: '接收器异常', heartbeat_timeout: '心跳超时', account_mismatch: 'QQ 账号不匹配'};
-    const qqStages = {login_info: '校验账号', group_list: '读取群聊', friend_list: '读取好友'};
     q('#system-info').innerHTML = [
       '服务：' + (health ? '正常' : '不可用'),
       '采集：' + captureLabel(state),
       syncTime(state),
-      'QQ 实时采集：' + (qqLabels[qq?.state] || '状态不可用'),
-      ...(qq?.state === 'waiting_login' ? ['请打开 QQ 引擎管理页完成登录。'] : []),
-      ...(qq?.process_issue === 'duplicate_login' ? ['该 QQ 账号已在其他客户端登录，请确认登录状态后重试。'] : []),
-      ...(qq?.handshake_failure ? ['QQ 上次连接失败：' + (qqStages[qq.handshake_failure.stage] || '连接初始化') +
-        ' · ' + (qqDisconnect[qq.handshake_failure.reason] || '连接未完成')] : []),
-      ...(qq?.last_heartbeat_at ? ['QQ 最近心跳：' + qqTime(qq.last_heartbeat_at)] : []),
-      ...(qq?.process_exited_at && qq.engine !== 'snowluma' ? ['QQ 引擎最近退出：' + qqTime(qq.process_exited_at) + '，退出码 ' + qq.process_exit_code] : []),
-      ...(qq?.last_message_at ? ['QQ 最近入库：' + qqTime(qq.last_message_at)] : []),
-      ...(qq?.state === 'disconnected' && qqDisconnect[qq.disconnect_reason] ?
-        ['QQ 断线类型：' + qqDisconnect[qq.disconnect_reason]] : []),
-      ...(qq?.disconnected_at ? ['QQ 最近断线：' + qqTime(qq.disconnected_at) + '。如有漏收消息，可在「我的待办 → 导入与采集」用聊天文件补齐。'] : []),
       '消息处理：' + (scheduler?.capture || '状态不可用'),
       '最近错误：' + (scheduler?.last_error || '暂无'),
-    ].map(line => '<p>' + esc(line) + '</p>').join('') +
-      (qq?.engine === 'snowluma' ? '<p><a href="http://127.0.0.1:5099/">打开本机 SnowLuma 管理页</a></p>' :
-        qq?.state === 'waiting_login' ? '<p><a href="http://127.0.0.1:6099/">打开本机 NapCat 管理页</a></p>' : '');
+    ].map(line => '<p>' + esc(line) + '</p>').join('');
   }
 
   q('#search-form').onsubmit = async event => {

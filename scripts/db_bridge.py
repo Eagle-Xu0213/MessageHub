@@ -1,6 +1,6 @@
 """本地聊天数据库 / 导出 → MessageHub 实时桥接（只读上游，仅 POST 到 127.0.0.1:8000）。
 
-背景：微信 4.x 与 QQ NT 的本地数据库均为 SQLCipher 加密，无法直接读。
+背景：微信 4.x 的本地数据库为 SQLCipher 加密，无法直接读。
 本脚本不负责解密，只负责把「已解密的数据源」增量接入 MessageHub：
 
   --mode http    对接本机 chatlog 类 HTTP 服务（默认 http://127.0.0.1:5030/api/v1/chatlog）
@@ -247,7 +247,7 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="只跑一轮（默认行为，显式写法）")
     ap.add_argument("--loop", action="store_true", help="持续运行")
     ap.add_argument("--interval", type=float, default=10.0)
-    ap.add_argument("--platform", default="wechat", choices=["wechat", "qq", "other"])
+    ap.add_argument("--platform", default="wechat", choices=["wechat", "other"])
     ap.add_argument("--ingest-url", default=DEFAULT_INGEST)
     ap.add_argument("--chatlog-url", default=DEFAULT_CHATLOG)
     ap.add_argument("--time", default="today", help="chatlog 时间范围，如 today / 2026-11-15~2026-11-16")

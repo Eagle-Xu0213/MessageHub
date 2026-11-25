@@ -4,11 +4,14 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-25
+
+- 移除已下架平台的实时接收、专用文件导入、范围配置和工作台入口。
+
 ## [2.2.0] - 2026-11-24
 
 - 「设置 → AI 增强」新增可填写的接口地址、模型名和密钥，配置只保存在本机 `runtime/llm_settings.json`，密钥留空即保留原值且不回显；未配置时仍用本地规则或 `.env` 兼容回退。
-- 安装指引改为 Agent 全接管流程：自动准备 Python、Git、依赖与开机自启，用户只需登录微信、自行安装登录 QQ 引擎、确认身份和会话分级。
-- 明确 QQ 引擎须用户本人获取并接受发行包条款，Agent 不自动下载部署；连接后由 Agent 探测账号目录并通过状态接口自检。
+- 安装指引改为 Agent 全接管流程：自动准备 Python、Git、依赖与开机自启，用户只需登录微信、确认身份和会话分级。
 
 ## [2.1.1] - 2026-11-24
 
@@ -26,9 +29,7 @@
 ## [2.0.1] - 2026-11-24
 
 - 重新设计工作台，新增按待办截止日期查看的日历和活动页面自动刷新。
-- 支持本机 OneBot 11 实时接收 QQ 群聊和好友消息，保留 QQ 文件导入。
-- 微信与 QQ 独立设置工作、混合和未关注会话，支持按分级筛选及按可用活动时间排列 QQ 群。
-- 修正微信快照发布与入库之间的交接，补充 QQ 连接诊断和 Agent 安装指引。
+- 修正微信快照发布与入库之间的交接，补充 Agent 安装指引。
 
 ## [1.3.0] - 2026-11-23
 
@@ -88,7 +89,7 @@
 - **全文检索**：SQLite FTS5 索引
 - **定时调度**：每天 8 点生成日报 + 整点滚动检查，有新事件才通知
 - **邮件桥**：简报自动发送到指定邮箱（可选）
-- **多格式导入**：MessageHub 标准 / Moect / QQ Chat Exporter / 通用 CSV、TXT
+- **多格式导入**：MessageHub 标准 / Moect / 通用 CSV、TXT
 - **环境自检**：`python scripts/moect_live.py --check` 逐项检查 Moect、快照、服务、配置
 
 ### 隐私与安全
@@ -103,7 +104,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.0.2...v2.1.0

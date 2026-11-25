@@ -37,9 +37,8 @@ def _context_candidate(mention: dict[str, Any], nearby: list[dict[str, Any]]) ->
     if not at:
         return None
     for message in nearby:
-        if mention.get("source_platform") == "qq" or message.get("source_platform") == "qq":
-            if not same_qq_sender(mention, message):
-                break
+        if message.get("source_platform") != mention.get("source_platform"):
+            break
         when = _time(message.get('sent_at'))
         if not when or abs((when - at).total_seconds()) > 300:
             continue
@@ -57,16 +56,6 @@ def _context_candidate(mention: dict[str, Any], nearby: list[dict[str, Any]]) ->
                      'reason': '根据相邻消息整理，请核对原文'}, message)
         break
     return None
-
-
-def same_qq_sender(anchor: dict, other: dict) -> bool:
-    return (
-        anchor.get("source_platform") == other.get("source_platform") == "qq"
-        and anchor.get("time_confidence") == other.get("time_confidence") == "exact"
-        and bool(anchor.get("sender_ref") and anchor.get("account_ref"))
-        and all(anchor.get(key) == other.get(key)
-                for key in ("conversation_id", "account_ref", "sender_ref"))
-    )
 
 
 def _time(value: str) -> datetime | None:
@@ -139,23 +128,7 @@ def deadline_of(text: str, sent_at: str) -> str | None:
     return date.replace(hour=hour, minute=minute, second=0, microsecond=0).isoformat()
 
 
-def _selected_qq(message: dict, kind: str) -> bool:
-    conversation = str(message.get("conversation_id") or "")
-    if not conversation.startswith(f"qq:{kind}:") or message.get("source_method") not in ("qq_chat_exporter_v5", "qq_onebot"):
-        return False
-    scope = (personal._CONFIG.get("qq_scope") or {}).get(conversation) or {}
-    since = _time(scope.get("since"))
-    sent = _time(message.get("sent_at"))
-    return bool(
-        scope.get("level") in ("work", "watch") and since and sent and sent >= since
-        and message.get("time_confidence") == "exact" and message.get("source_message_id")
-        and (message.get("id") or 0) > scope.get("baseline_id", 0)
-    )
-
-
 def selected_group(message: dict[str, Any]) -> bool:
-    if message.get("source_platform") == "qq":
-        return _selected_qq(message, "group")
     name = (message.get('conversation_name') or '').strip()
     gid = str(message.get('conversation_id') or '')
     if gid in personal.EXCLUDED_GROUP_IDS or name in personal.EXCLUDED_GROUPS:
@@ -174,8 +147,6 @@ def selected_group(message: dict[str, Any]) -> bool:
 
 def selected_work_contact(message: dict[str, Any]) -> bool:
     """Selected work or mixed contacts, excluding groups and excluded contacts."""
-    if message.get("source_platform") == "qq":
-        return _selected_qq(message, "contact")
     name = (message.get('conversation_name') or '').strip()
     gid = str(message.get('conversation_id') or '')
     if gid.endswith('@chatroom') or gid in (personal.WORK_GROUP_IDS | personal.WATCH_GROUP_IDS | personal.EXCLUDED_GROUP_IDS):
@@ -183,11 +154,6 @@ def selected_work_contact(message: dict[str, Any]) -> bool:
     if name in (personal.WORK_GROUPS | personal.WATCH_GROUPS | personal.EXCLUDED_GROUPS):
         return False
     return name in (personal.WORK_CONTACTS | personal.WATCH_CONTACTS) and name not in personal.EXCLUDED_CONTACTS
-
-
-def _qq_addressed_to_me(message: dict) -> bool:
-    account = message.get("account_ref")
-    return bool(account and re.search(r"(?<!\S)@" + re.escape(account) + r"(?!\d)", message.get("text") or ""))
 
 
 def classify(message: dict[str, Any]) -> dict[str, Any] | None:
@@ -213,19 +179,12 @@ def classify(message: dict[str, Any]) -> dict[str, Any] | None:
     if personal.MY_SHORTNAME:
         names.add(personal.MY_SHORTNAME)
     direct = any(re.search(r"(?<![\u4e00-\u9fff])(?:@[^\s@，,。:：]{0,20}?)?" + re.escape(n) + r"(?=[\s，,。:：！!？?]|你|请|麻烦|帮|负责|$)", text) for n in names)
-    if message.get("source_method") == "qq_onebot":
-        direct = direct or _qq_addressed_to_me(message)
     action = bool(_ACTION.search(text) or _REPLY_REQUEST.search(text))
     # A mention alone is not work evidence. Context can promote it below.
     if direct and not _WORK.search(text):
         return None
     if not direct:
         # Public notices require both a subject and an explicit announcement signal.
-        if message.get("source_platform") == "qq" and action and _WORK.search(text):
-            category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), "其他")
-            return {"status": "review", "category": category,
-                    "deadline": deadline_of(text, message.get("sent_at") or ""),
-                    "reason": "QQ 群内出现工作事项，请确认是否与你有关"}
         if not (re.search(r"通知|公告|各位|大家|全体|所有人", text) and re.search(r"会议|开会|报名|截止|提交材料|材料提交|填表|问卷", text)):
             return None
         category = next((label for label, pattern in _CATEGORY_RES if pattern.search(text)), "其他")
@@ -330,6 +289,8 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
         for row in rows:
             msg = dict(row)
             result["processed"] += 1
+            if msg.get("source_platform") == "qq":
+                continue
             timestamp = _time(msg["sent_at"])
             if base_time and timestamp and timestamp < base_time:
                 continue
@@ -338,8 +299,6 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                 continue
             sender = (msg["sender_name"] or "").strip()
             if sender in personal.MY_SENDER_NAMES:
-                if msg.get("source_platform") == "qq":
-                    continue
                 text = (msg["text"] or "").strip()
                 if _DONE.search(text) and not _NOT_DONE.search(text):
                     candidates = conn.execute("SELECT id,text FROM personal_tasks WHERE conversation_id=? AND status IN ('pending','accepted','in_progress')", (msg["conversation_id"],)).fetchall()
@@ -358,22 +317,17 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                             conn.execute("UPDATE personal_tasks SET status='accepted', updated_at=? WHERE id=?", (datetime.now(CN_TZ).isoformat(), candidates[0]["id"]))
                 continue
             # A bare mention may follow its instruction in a separate WeChat message.
-            if msg.get("source_platform") == "qq" and msg.get("sender_ref") and msg["sender_ref"] == msg.get("account_ref"):
-                continue
             candidate = classify(msg)
             contextual_title = None
             bare_mention = bool(_BARE_MENTION.fullmatch((msg['text'] or '').strip()))
             names = (personal.MY_NICKNAMES or personal.MY_SENDER_NAMES) | ({personal.MY_REALNAME} if personal.MY_REALNAME else set()) | ({personal.MY_SHORTNAME} if personal.MY_SHORTNAME else set())
             mine = bare_mention and any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', msg['text'].strip()) for name in names)
-            if msg.get("source_method") == "qq_onebot" and bare_mention and _qq_addressed_to_me(msg):
-                mine = True
             if mine:
                 previous = conn.execute(
                     'SELECT * FROM messages '
                     'WHERE conversation_id=? AND id<? ORDER BY id DESC LIMIT 1',
                     (msg['conversation_id'], msg['id'])).fetchall()
-                nearby = [dict(row) for row in previous if (not base_time or (_time(row['sent_at']) and _time(row['sent_at']) >= base_time))
-                          and (msg.get('source_platform') != 'qq' or selected_group(dict(row)) or selected_work_contact(dict(row)))]
+                nearby = [dict(row) for row in previous if (not base_time or (_time(row['sent_at']) and _time(row['sent_at']) >= base_time))]
                 matched = _context_candidate(msg, nearby)
                 if matched:
                     candidate, source = matched
@@ -386,11 +340,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                 mention = dict(previous_message)
                 mention_time = _time(mention['sent_at'])
                 is_mine = any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', mention['text'].strip()) for name in names)
-                if mention.get("source_method") == "qq_onebot" and _BARE_MENTION.fullmatch(mention["text"]):
-                    is_mine = is_mine or _qq_addressed_to_me(mention)
-                if is_mine and (not base_time or (mention_time and mention_time >= base_time)) and (
-                    msg.get("source_platform") != "qq" or selected_group(mention) or selected_work_contact(mention)
-                ):
+                if is_mine and (not base_time or (mention_time and mention_time >= base_time)):
                     matched = _context_candidate(mention, [msg])
                     if matched:
                         info, source = matched
@@ -410,9 +360,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                                 AND n.id>m.id AND n.id<?)
                 ORDER BY t.message_id DESC LIMIT 1''',
                 (msg['conversation_id'], msg['id'], msg['id'])).fetchone()
-            if previous_task and (
-                msg.get("source_platform") != "qq" or selected_group(dict(previous_task)) or selected_work_contact(dict(previous_task))
-            ):
+            if previous_task:
                 matched = _context_candidate(dict(previous_task), [msg])
                 if matched:
                     info, source = matched

@@ -3,7 +3,6 @@
 支持：
 - MessageHub 标准 JSONL / JSON（含完整字段）
 - Moect 微信导出（JSON / JSONL，启发式字段映射，待真实样本校验）
-- QQ Chat Exporter V5（JSON）
 - 通用 CSV / TXT（每行一条文本）
 
 所有解析器返回统一 RawMessage 字典，字段对齐 DB schema：
@@ -126,48 +125,6 @@ def parse_moect(obj: dict, fallback_platform: str = "wechat") -> Optional[dict]:
         "time_confidence": conf,
         "capture_status": "full",
     }
-
-
-def parse_qq_exporter_v5(data: dict) -> list[dict]:
-    """QQ Chat Exporter V5 JSON。返回多条。"""
-    out = []
-    chat = data.get("chatInfo") or {}
-    conv_name = chat.get("name") or "QQ会话"
-    conv_id = chat.get("peerUid") or chat.get("uin") or chat.get("selfUin") or conv_name
-    account = str(chat.get("selfUin") or chat.get("selfUid") or "")
-    peer = str(chat.get("peerUid") or chat.get("peerUin") or chat.get("groupCode") or chat.get("uin") or "")
-    kind = {"group": "group", "private": "contact", "friend": "contact", "single": "contact", "c2c": "contact"}.get(str(chat.get("type") or "").lower())
-    if account and peer and kind:
-        conv_id = "qq:" + kind + ":" + json.dumps([account, peer], ensure_ascii=False, separators=(",", ":"))
-    msgs = data.get("messages") or []
-    for m in msgs:
-        sender = m.get("sender") or {}
-        sname = sender.get("name") or sender.get("nickname") or "unknown"
-        # 内容：优先 content.text；否则直接 content 字符串
-        content = m.get("content")
-        if isinstance(content, dict):
-            text = _norm_text(content.get("text") or content.get("summary"))
-        else:
-            text = _norm_text(content)
-        if not text:
-            continue
-        iso, conf = _to_iso(m.get("timestamp"))
-        out.append({
-            "source_platform": "qq",
-            "source_method": "qq_chat_exporter_v5",
-            "account_ref": account or None,
-            "conversation_id": conv_id,
-            "conversation_name": conv_name,
-            "sender_name": sname,
-            "sender_ref": str(sender.get("uid") or sender.get("uin") or ""),
-            "sent_at": iso,
-            "text": text,
-            "message_type": "text",
-            "source_message_id": str(m.get("id") or m.get("seq") or ""),
-            "time_confidence": conf,
-            "capture_status": "full",
-        })
-    return out
 
 
 def parse_weflow_json(data: dict) -> list[dict]:
@@ -422,7 +379,7 @@ def _route_json(content: str, ext: str) -> tuple[list[dict], str]:
     """.json/.jsonl 内容 → (消息列表, 平台提示)。
 
     有序规则表驱动，顺序即优先级。设计约束（均来自实测教训）：
-    1. 单对象 JSON（QQ V5 / WeFlow）顶层也常有 metadata，必须先于
+    1. 单对象 JSON（WeFlow）顶层也常有 metadata，必须先于
        「按行逐个解析」的 JSONL 格式判定，否则被误判为 Moect 行格式且返回空。
     2. 探测命中但解析为空（损坏文件）→ 落到下一规则，最终返回空列表而非报错。
     """
@@ -431,9 +388,6 @@ def _route_json(content: str, ext: str) -> tuple[list[dict], str]:
 
     # ---- 单对象 JSON（只可能出现在 .json；.jsonl 整体 parse 必失败 → top=None）----
     if isinstance(top, dict) and "messages" in top:
-        meta_name = str((top.get("metadata") or {}).get("name") or "")
-        if "chatInfo" in top or meta_name.startswith("QQ"):
-            return parse_qq_exporter_v5(top), "qq"
         if "session" in top or "weflow" in top:
             return parse_weflow_json(top), "wechat"
 

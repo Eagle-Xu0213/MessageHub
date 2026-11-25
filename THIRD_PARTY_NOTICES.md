@@ -8,10 +8,6 @@ MessageHub 以 [MIT](LICENSE) 协议发布。本文件列出其依赖或调用�
 - 许可证：GPL-3.0（衍生自 QQ Chat Exporter、WeChatMsg / WeChatMsg-4x，详见其仓库内的归属声明）
 - 使用方式：安装脚本在独立目录复用或克隆 Moect 源码。无界面计划任务调用该源码生成本机明文快照，采集桥读取快照。MessageHub 仓库不包含 Moect 源码或二进制文件。
 
-## QQ OneBot 引擎（用户独立安装）
-
-MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件。可连接用户已有的兼容引擎，例如 [SnowLuma](https://github.com/baixiangyuan/SnowLuma/releases/tag/v2.4.2) 或 NapCat。引擎及其专有组件由各自发行方独立授权。MessageHub 不随应用分发这些程序。SnowLuma 专有组件的自动部署及再分发限制见 [发行包条款](https://github.com/baixiangyuan/SnowLuma/blob/v2.4.2/EULA.md)。
-
 ## 运行时依赖（Python 包）
 
 | 组件 | 许可证 | 来源 |
@@ -43,7 +39,7 @@ MessageHub 接收 [OneBot 11](https://github.com/botuniverse/onebot-11) 事件�
 ## 许可证说明
 
 - 上表许可证类型以各组件仓库当前 LICENSE 文件为准；如个别组件许可证版本有出入，以组件自身声明为准。
-- Python 依赖通过 PyPI 安装。Moect 源码和 QQ 引擎按各自的方式独立准备。
+- Python 依赖通过 PyPI 安装。Moect 源码独立准备。
 
 ## 免责声明
 

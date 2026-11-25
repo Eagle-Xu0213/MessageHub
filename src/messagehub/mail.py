@@ -5,9 +5,9 @@ AI 助手读取并统一规划日程——简报发到邮箱，后续处理交�
 
 配置（.env，全部可选；不配则只在网页显示简报，不发信）：
   MESSAGEHUB_EMAIL_ENABLED=1
-  SMTP_HOST=smtp.qq.com
+  SMTP_HOST=smtp.example.com
   SMTP_PORT=465
-  SMTP_USER=your-account@qq.com
+  SMTP_USER=your-account@example.com
   SMTP_PASS=<邮箱授权码，不是登录密码>
   BRIEF_TO=your-inbox@example.com
 
@@ -53,7 +53,7 @@ def _settings() -> dict:
     except FileNotFoundError:
         return {
             "enabled": os.getenv("MESSAGEHUB_EMAIL_ENABLED") == "1",
-            "host": os.getenv("SMTP_HOST", "smtp.qq.com"),
+            "host": os.getenv("SMTP_HOST", ""),
             "port": os.getenv("SMTP_PORT", "465"),
             "user": os.getenv("SMTP_USER", ""),
             "pass": os.getenv("SMTP_PASS", ""),

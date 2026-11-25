@@ -1,4 +1,4 @@
-"""微信 / QQ 客户端 UIA 只读消息源。
+"""微信 客户端 UIA 只读消息源。
 
 **状态（2026-11-15 实测定案）：UIA 正文采集不可行，仅保留只读结构诊断。**
 微信 4.2 消息区是 MMUIRenderSubWindowHW 自绘层，UIA 树里 0 个消息文本控件
@@ -20,8 +20,6 @@ read() 保留完整边界逻辑，供未来客户端版本重新评估时复用�
   0 个消息文本控件；ChatDetailView 的 TextPattern / ValuePattern 均不支持，
   LegacyIAccessible 名称与值为空；原生子窗口只有 2 个且无正文。
   → UIA 直读聊天正文在此客户端版本不可行，与解锁 / 白名单 / 窗口可见无关。
-- QQ NT：复测时无 qq.exe 顶层窗口（只有 chrome.exe / workbuddy.exe 的
-  Chrome_WidgetWin_1，已按进程名排除误判），需先打开 QQ 主窗口再评估。
 → 因此实时接入以标准 HTTP 接入点（POST /api/live/ingest）为主通道。
 """
 from __future__ import annotations
@@ -53,8 +51,6 @@ def _process_name(hwnd: int) -> str:
         return ""
 
 WECHAT_WINDOW_CLASSES = ("mmui::MainWindow", "WeChatMainWnd", "Qt51514QWindowIcon")
-QQ_WINDOW_CLASSES = ("Chrome_WidgetWin_1",)
-QQ_MSG_CLASS_HINTS = ("message-container", "msg-content-container", "chat-header__contact-name")
 WECHAT_MSG_CLASS_HINTS = ("ChatDetailView", "ChatMasterView", "msg", "Message")
 
 # 明显的系统/非消息控件名，抓文本时排除
@@ -118,8 +114,6 @@ class UIASource:
                 platform = None
                 if "mmui" in cls or "WeChatMainWnd" in cls or proc in ("weixin.exe", "wechat.exe"):
                     platform = "wechat"
-                elif proc in ("qq.exe", "qqex.exe") or "QQ" in name:
-                    platform = "qq"
                 if platform:
                     # 会话名是白名单匹配依据，不属于聊天正文，可以安全上报
                     chat_title = self._detect_chat_title(w)
@@ -131,7 +125,6 @@ class UIASource:
                 "available": True,
                 "windows": wins,
                 "wechat_window": any(x["platform"] == "wechat" for x in wins),
-                "qq_window": any(x["platform"] == "qq" for x in wins),
                 "allowed_chats": self.allowed_chats,
                 "capture_enabled": bool(self.allowed_chats),
                 "capture_all": self.capture_all,
@@ -156,8 +149,6 @@ class UIASource:
                 platform = None
                 if "mmui" in cls or "WeChatMainWnd" in cls or proc in ("weixin.exe", "wechat.exe"):
                     platform = "wechat"
-                elif proc in ("qq.exe", "qqex.exe") or "QQ" in name:
-                    platform = "qq"
                 if platform:
                     chat_name = self._detect_chat_title(w) or name
                     found.append({"platform": platform, "window": w,
@@ -218,7 +209,7 @@ class UIASource:
             if (text and len(text) >= 2 and not _NOISE.match(text)
                     and not _SKIP_NAMES.match(text) and text not in seen):
                 is_bubble = any(h.lower() in cls.lower() for h in
-                                (QQ_MSG_CLASS_HINTS + WECHAT_MSG_CLASS_HINTS))
+                                WECHAT_MSG_CLASS_HINTS)
                 if is_bubble or ctype in ("TextControl", "ListItemControl", "DataItemControl"):
                     seen.add(text)
                     out.append({"text": text, "class": cls, "type": ctype})
@@ -258,7 +249,7 @@ class UIASource:
                 if ctype in ("TextControl", "ListItemControl", "DataItemControl"):
                     info["text_controls"] += 1
                 if any(h.lower() in cls.lower() for h in
-                       (QQ_MSG_CLASS_HINTS + WECHAT_MSG_CLASS_HINTS)):
+                       WECHAT_MSG_CLASS_HINTS):
                     info["bubble_like"] += 1
             try:
                 children = ctrl.GetChildren()
@@ -289,16 +280,13 @@ class UIASource:
                 "messages": [], "probe": probe, "structure": [],
             }
         if not probe["windows"]:
-            return {"status": "no_window", "reason": "微信/QQ 主窗口不可见",
+            return {"status": "no_window", "reason": "微信 主窗口不可见",
                     "messages": [], "probe": probe, "structure": []}
 
         all_msgs: List[Dict[str, Any]] = []
         details: List[Dict[str, Any]] = []
         structures: List[Dict[str, Any]] = []
         for info in self._find_chat_windows():
-            if info["platform"] == "qq":
-                # The current QQ reader has no verified message IDs or sender identities.
-                continue
             chat = info["chat_name"] or ""
             # 微信主窗口标题固定为「微信」且 4.x 未在 UIA 暴露会话头，
             # 此时无法确知群名，用占位名并明确标记，绝不猜测。

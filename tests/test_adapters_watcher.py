@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
 from messagehub.adapters.registry import (
-    detect_and_parse, parse_qq_exporter_v5, _to_iso
+    detect_and_parse, _to_iso
 )
 from messagehub.pipeline.importer import import_file
 from messagehub.pipeline.watcher import scan_directory, get_latest_capture_status
@@ -54,31 +54,6 @@ def test_to_iso_empty():
     assert conf == "unknown"
 
 
-def test_qq_exporter_v5():
-    data = {
-        "metadata": {"name": "QQChatExporter V5", "version": "5.x"},
-        "chatInfo": {"name": "志愿者群", "type": "group", "selfUin": "10001"},
-        "statistics": {"totalMessages": 2},
-        "messages": [
-            {"id": "1", "timestamp": 1770571107000, "time": "2026-02-09 01:18:27",
-             "sender": {"uid": "u1", "name": "组长"}, "type": "type_1",
-             "content": {"text": "周六活动报名明天截止"}},
-            {"id": "2", "timestamp": 1770571207000, "time": "2026-02-09 01:20:07",
-             "sender": {"uid": "u2", "name": "组员"}, "type": "type_1",
-             "content": {"text": "收到"}},
-        ],
-    }
-    f = TMP / "qq_group.json"
-    f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    raw, platform = detect_and_parse(str(f))
-    assert platform == "qq"
-    assert len(raw) == 2
-    assert raw[0]["source_platform"] == "qq"
-    assert raw[0]["conversation_name"] == "志愿者群"
-    assert raw[0]["sender_name"] == "组长"
-    assert "周六活动报名明天截止" in raw[0]["text"]
-
-
 def test_standard_jsonl_roundtrip():
     lines = [
         '{"source_platform":"wechat","conversation_id":"g1","conversation_name":"办公室","sender_name":"主任","sent_at":"2026-11-13T09:00:00+08:00","text":"提交总结","source_message_id":"m1"}',
@@ -115,7 +90,7 @@ def test_watcher_incremental():
     assert r2["files_skipped"] == 1
     assert r2["new"] == 0
     (watch / "b.jsonl").write_text(
-        '{"source_platform":"qq","conversation_id":"g2","conversation_name":"G2","sender_name":"s2","sent_at":"2026-11-13T10:00:00+08:00","text":"消息2","source_message_id":"y1"}',
+        '{"source_platform":"manual","conversation_id":"g2","conversation_name":"G2","sender_name":"s2","sent_at":"2026-11-13T10:00:00+08:00","text":"消息2","source_message_id":"y1"}',
         encoding="utf-8")
     r3 = scan_directory(DB_PATH, str(watch))
     assert r3["status"] == "ok_new"

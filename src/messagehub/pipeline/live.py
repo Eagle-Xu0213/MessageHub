@@ -5,7 +5,7 @@
 
 支持三类数据源，可同时开启：
 1. tail    —— 尾随 imports/live/*.jsonl 的新增行（不侵入客户端）。
-2. uia     —— 微信/QQ 客户端 UIA 只读抓取。需窗口可见 + 已授权采集范围；
+2. uia     —— 微信 客户端 UIA 只读抓取。需窗口可见 + 已授权采集范围；
                allowed_chats 含 "*" 表示用户授权所有群；为空时只探测、不采集。
                实测微信 4.2 消息区为自绘层，UIA 取不到正文（见 uia_source 文档）。
 3. ingest  —— 标准接入点 POST /api/live/ingest：外部工具推送后当轮入库，

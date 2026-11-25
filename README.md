@@ -10,6 +10,18 @@
 
 只想导入文件，直接在这句话里说明。Agent 按 [AGENTS.md](AGENTS.md) 接管全部可自动化的工作：安装 Python、Git 和依赖，克隆并配置项目，启动工作台并注册开机自启与看门狗，给出会话分级建议。你只需做两件事：登录微信客户端；确认自己的名字和会话分级。也可以只发链接，Agent 会用一句话确认接入哪些来源。
 
+### 在 DeepSeek Harness 中使用（可选）
+
+Windows 上已运行 MessageHub、已安装 DSH 0.2.3 桌面版时，可在项目目录运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dsh_integration.ps1 install
+```
+
+在 DSH 左侧点「MessageHub 工作台」打开完整版。在会话右栏的添加菜单中选「待办」，也可以从完整版点「在右侧查看待办」。两处读取同一份本机事项，展开某项后切换页面可以继续查看该事项。扩展只打开本机工作台页面。
+
+安装后若入口未出现，重启 DSH。卸载时用同一条命令，把末尾的 `install` 换成 `uninstall`。
+
 ### 自己安装
 
 不通过 Agent 时按下列顺序：

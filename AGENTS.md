@@ -70,3 +70,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_schedul
 ## 6. 版本与发布
 
 每次完成并验证改动后，维护者按[语义化版本](https://semver.org/lang/zh-CN/)选择下一版本，及时同步两个版本声明和变更记录，一般无需再问选哪一位。规则见[贡献指南](CONTRIBUTING.md#版本管理)。
+
+## 桌面界面验收
+
+修改工作台界面时，同时检查 16 英寸笔记本和 27 英寸显示器两档布局。以系统缩放后的可用宽度为准，DSH 内嵌版还要扣除 DSH 自带侧栏。缺少实机时，用约 1200 和 2200 CSS 像素的工作区宽度验证布局，并说明采用了模拟视口。

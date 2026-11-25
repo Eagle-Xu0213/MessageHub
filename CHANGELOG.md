@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-11-25
+
+- 待办页增加紧凑工具栏、事项搜索和标签筛选。浏览器及 DSH 完整工作台可切换三列看板。
+
+- 新增可选 DSH 桌面扩展，左侧打开完整工作台，右侧打开待办；两处共用本机事项。
+- DSH 内嵌完整工作台使用顶部横向导航，正文与顶栏对齐，并随工作区宽度调整布局。
+
 ## [3.5.0] - 2026-11-25
 
 - 待办分类支持新增、改名和删除标签，也可在待办列表中批量设置标签。
@@ -130,7 +137,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.5.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.0...HEAD
+[3.6.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...v3.3.0

@@ -86,8 +86,9 @@ task_pipeline.initialize_database(DB_PATH)
 
 # ==================== 首页 / 健康 / 导入 / 扫描 ====================
 
+@app.get("/dsh/todos", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
-async def index(request: None = None):
+async def index(request: Request):
     """首页工作台"""
     conn = get_db()
     cursor = conn.cursor()
@@ -141,6 +142,8 @@ async def index(request: None = None):
             conversations=conversations[:10],  # 最近 10 个群
             today_by_group=today_by_group,
             app_version=update.__version__,
+            dsh_todos=request.url.path == "/dsh/todos",
+            dsh_embed=request.query_params.get("embed") == "dsh",
         )
     )
 

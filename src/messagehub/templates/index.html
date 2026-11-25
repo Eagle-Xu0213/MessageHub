@@ -7,11 +7,14 @@
   <link rel="stylesheet" href="/static/glass.css" data-classic="/static/glass-classic.css">
   <link rel="stylesheet" href="/static/workbench.css" data-classic="/static/workbench-classic.css">
   <link rel="stylesheet" href="/static/paper.css?v=3.3.0-aligned">
+  <link rel="stylesheet" href="/static/tasks-layout.css?v=3.6.0">
   <link rel="stylesheet" href="/static/chat-messages.css?v=3.4.0">
+  {% if dsh_embed and not dsh_todos %}<link rel="stylesheet" href="/static/dsh-workbench.css?v=3.6.0-inset">{% endif %}
   <script src="/static/ambient.js?v=3.3.0"></script>
 </head>
-<body class="workbench">
+<body class="workbench{% if dsh_todos %} dsh-todos{% endif %}" data-dsh-mode="{% if dsh_todos %}todos{% elif dsh_embed %}full{% endif %}">
 
+  {% if dsh_todos %}<link rel="stylesheet" href="/static/dsh-todos.css">{% endif %}
   <header class="workbench-header">
     <a class="workbench-brand" href="#home" data-page="home"><span aria-hidden="true"></span>MessageHub</a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="side-nav">菜单</button>
@@ -22,6 +25,11 @@
       <button data-page="system">运行状态</button>
       <button data-page="settings">设置</button>
     </nav>
+    {% if dsh_todos or dsh_embed %}
+    <button type="button" class="btn" id="dsh-switch">{{ "打开完整工作台" if dsh_todos else "在右侧查看待办" }}</button>
+    <span id="dsh-status" role="status"></span>
+    <button type="button" class="btn" id="dsh-retry" hidden>重新加载待办</button>
+    {% endif %}
     <button class="btn primary" id="new-item">＋ 新建事项</button>
   </header>
 
@@ -297,37 +305,37 @@
 
       <!-- ========== TASKS PAGE ========== -->
       <section id="tasks-page" class="page" hidden>
-        <div class="page-title">
+        <div class="task-tools">
           <h1>我的待办</h1>
-          <p>整理需要关注的事项</p>
+          <div class="task-filters">
+            <input id="task-search" type="search" placeholder="搜索事项" aria-label="搜索事项">
+            <select id="source-filter" aria-label="消息来源">
+              <option value="">全部来源</option>
+              <option value="wechat">微信</option>
+              <option value="manual">手动</option>
+            </select>
+            <select id="task-category-filter" aria-label="标签">
+              <option value="">全部标签</option>
+            </select>
+          </div>
+          {% if not dsh_todos %}
+          <button type="button" class="btn" id="task-board-toggle" aria-pressed="false">切换到看板</button>
+          {% endif %}
           <button class="btn primary" id="new-item-inline">＋ 新建事项</button>
         </div>
 
-        <!-- Update banner -->
         <div id="update-banner" style="display:none" role="status">
           <span id="update-message"></span>
           <button class="btn primary" id="update-button">一键更新</button>
         </div>
 
-        <!-- Stats strip -->
-        <div class="stats" id="stats"></div>
-
-        <!-- Toolbar -->
-        <div class="toolbar">
+        <div class="task-views">
           <div class="tabs" id="tabs"></div>
-          <select id="source-filter" aria-label="消息来源">
-            <option value="">全部来源</option>
-            <option value="wechat">微信</option>
-            <option value="manual">手动</option>
-          </select>
-          <span class="muted">自动整理可能有遗漏，请核对原文</span>
+          <div class="task-deadline-filters" id="stats"></div>
+          <button class="btn" id="batch-toggle" type="button" aria-expanded="false">批量设置标签</button>
         </div>
-
-        <!-- Error display -->
         <div id="error" class="error" role="alert"></div>
 
-        <!-- Task items list -->
-        <button class="btn" id="batch-toggle" type="button" aria-expanded="false">批量设置标签</button>
         <form class="glass panel" id="batch-category" hidden>
           <div class="actions">
             <button class="btn" id="batch-select-all" type="button">全选当前列表</button>
@@ -404,8 +412,77 @@ const title=x=>(x.title||(bare(x)?x.context_summary:null)||x.text||'未命名事
 const label={pending:'待处理',accepted:'已接受',in_progress:'进行中',review:'待确认',notice:'重要通知',completed:'已完成',ignored:'已忽略',dismissed:'已忽略',archived:'已归档'};
 const reasonLabel = reason => reason === '提及本人，行动不明确' ? '提及了你，尚不明确需要做什么' : reason;
 const sourceLabels = {wechat: '微信', manual: '手动'};
-$('#source-filter').addEventListener('change', () => { resetBatchSelection(); render(); });
-function render(){const platform=$('#source-filter').value;const visibleItems=platform?items.filter(x=>x.source_platform===platform):items;const metrics=[['overdue','已逾期',visibleItems.filter(overdue).length],['soon','即将截止',visibleItems.filter(soon).length],['pending','待处理',visibleItems.filter(active).length],['review','待确认',visibleItems.filter(x=>x.status==='review').length],['notice','重要通知',visibleItems.filter(x=>x.status==='notice').length]];$('#stats').innerHTML=metrics.map(([id,name,n])=>`<button class="stat ${view===id?'active':''} ${id==='overdue'||id==='soon'?'urgent':''}" data-view="${id}"><strong>${n}</strong>${name}</button>`).join('');const tabs=[['pending','待处理'],['review','待确认'],['notice','重要通知'],['history','历史记录']];$('#tabs').innerHTML=tabs.map(([id,n])=>`<button data-view="${id}" class="${view===id?'active':''}">${n}</button>`).join('');let list=visibleItems.filter(x=>view==='pending'?active(x):view==='overdue'?overdue(x):view==='soon'?soon(x):view==='history'?['completed','ignored','dismissed','archived'].includes(x.status):x.status===view);list.sort((a,b)=>view==='history'?(b.updated_at||'').localeCompare(a.updated_at||''):(time(a)??Infinity)-(time(b)??Infinity)||b.id-a.id);$('#items').innerHTML=list.length?list.map(x=>{let buttons=active(x)?[['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head">${batchForm.hidden?'':`<input type="checkbox" aria-label="选择待办 ${x.id}" data-select-task="${x.id}" ${selectedTasks.has(x.id)?'checked':''} ${batchSaving?'disabled':''}>`}<button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`}).join(''):'<div class="empty">当前列表暂无事项</div>';updateBatchSelection(list);}
+let taskBoard = false;
+const boardToggle = $('#task-board-toggle');
+const categoryFilter = $('#task-category-filter');
+
+for (const [selector, event] of [['#source-filter', 'change'], ['#task-category-filter', 'change'], ['#task-search', 'input']]) {
+  $(selector).addEventListener(event, () => { resetBatchSelection(); render(); });
+}
+
+function taskCard(x) {
+  let buttons=active(x)?[...(x.status === 'in_progress' ? [['pending','移回待办']] : [['in_progress','开始']]),['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head">${batchForm.hidden?'':`<input type="checkbox" aria-label="选择待办 ${x.id}" data-select-task="${x.id}" ${selectedTasks.has(x.id)?'checked':''} ${batchSaving?'disabled':''}>`}<button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`
+}
+
+function render() {
+  const platform = $('#source-filter').value;
+  const selected = categoryFilter.value;
+  const categories = [...new Set(items.map(item => item.category || ''))].sort((a,b) => a.localeCompare(b, 'zh-CN'));
+  const options = [new Option('全部标签', ''), ...categories.map(name => new Option(category(name), 'category:' + name))];
+  if (categoryFilter.options.length !== options.length ||
+      options.some((option, index) => option.value !== categoryFilter.options[index]?.value)) {
+    categoryFilter.replaceChildren(...options);
+    categoryFilter.value = options.some(option => option.value === selected) ? selected : '';
+  }
+  const tag = categoryFilter.value;
+  const words = $('#task-search').value.trim().toLowerCase().split(/\s+/);
+  const visibleItems = items.filter(item => {
+    const text = [title(item), item.text, item.context_summary, item.conversation_name, item.category].join(' ').toLowerCase();
+    return (!platform || item.source_platform === platform) &&
+      (!tag || tag === 'category:' + (item.category || '')) && words.every(word => text.includes(word));
+  });
+  const lanes = [
+    ['待确认', item => item.status === 'review'],
+    ['待办', item => ['pending', 'accepted'].includes(item.status)],
+    ['进行中', item => item.status === 'in_progress'],
+  ];
+  const sortDue = (a,b) => (time(a) ?? Infinity) - (time(b) ?? Infinity) || b.id - a.id;
+  const metrics = [['overdue','已逾期',overdue], ['soon','即将截止',soon]];
+  $('#stats').innerHTML = metrics.map(([id,name,match]) =>
+    `<button class="btn ${!taskBoard && view === id ? 'active' : ''}" data-view="${id}">${name} ${visibleItems.filter(match).length}</button>`).join('');
+  const tabs = [['pending','待处理'], ['review','待确认'], ['notice','重要通知'], ['history','历史记录']];
+  $('#tabs').innerHTML = tabs.map(([id,name]) =>
+    `<button data-view="${id}" class="${!taskBoard && view === id ? 'active' : ''}">${name}</button>`).join('');
+  if (boardToggle) {
+    boardToggle.textContent = taskBoard ? '切换到列表' : '切换到看板';
+    boardToggle.setAttribute('aria-pressed', String(taskBoard));
+  }
+
+  const container = $('#items');
+  container.classList.toggle('task-board', taskBoard);
+  if (taskBoard) {
+    const groups = lanes.map(([name, match]) => [name, visibleItems.filter(match).sort(sortDue)]);
+    container.innerHTML = groups.map(([name, list]) =>
+      `<section class="task-lane"><h2>${name} <span>${list.length}</span></h2>${list.length ?
+        list.map(taskCard).join('') : '<p class="muted task-lane-empty">暂无事项</p>'}</section>`).join('');
+    updateBatchSelection(groups.flatMap(([, list]) => list));
+    return;
+  }
+  const match = {
+    pending: active, overdue, soon,
+    history: item => ['completed','ignored','dismissed','archived'].includes(item.status),
+  }[view] || (item => item.status === view);
+  const list = visibleItems.filter(match).sort(view === 'history'
+    ? (a,b) => (b.updated_at || '').localeCompare(a.updated_at || '') : sortDue);
+  container.innerHTML = list.length ? list.map(taskCard).join('') : '<div class="empty">当前列表暂无事项</div>';
+  updateBatchSelection(list);
+}
+
+if (boardToggle) boardToggle.onclick = () => {
+  taskBoard = !taskBoard;
+  resetBatchSelection();
+  render();
+};
 let taskRequest = 0;
 let taskUpdates = 0;
 function taskRefreshBlocked() {
@@ -424,9 +501,13 @@ async function load({background = false} = {}) {
     if (background && JSON.stringify(items) === JSON.stringify(next)) return;
     items = next;
     $('#error').textContent = '';
+    if (dshMode) $('#dsh-retry').hidden = true;
     render();
   } catch {
-    if (!background && request === taskRequest) $('#error').textContent = '事项加载失败，请检查服务状态。';
+    if ((!background || dshMode) && request === taskRequest) {
+      $('#error').textContent = '事项加载失败，请检查服务状态。';
+      if (dshMode) $('#dsh-retry').hidden = false;
+    }
   }
 }
 async function update(id, data) {
@@ -440,6 +521,7 @@ async function update(id, data) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || '保存失败');
+    notifyDshTasks();
     await load();
     return result;
   } finally {
@@ -480,7 +562,7 @@ async function changeStatus(item, status) {
   });
 }
 
-document.addEventListener('click',async e=>{const v=e.target.closest('[data-view]');if(v){view=v.dataset.view;render();return}const expand=e.target.closest('[data-expand]');if(expand){let id=Number(expand.dataset.expand);expanded=expanded===id?null:id;render();if(expanded)await loadItemContext(id);return}const b=e.target.closest('[data-action]');if(!b)return;const x=items.find(x=>x.id===Number(b.dataset.id));if(b.dataset.action==='edit'){openEditor(x);return}let status=b.dataset.action;if(status==='restore')status=x.status==='archived'?'notice':x.status==='ignored'?'review':'pending';b.disabled=true;try{await changeStatus(x,status)}catch(err){await load();$('#error').textContent=err.message}finally{b.disabled=false}});
+document.addEventListener('click',async e=>{const v=e.target.closest('[data-view]');if(v){taskBoard=false;view=v.dataset.view;render();return}const expand=e.target.closest('[data-expand]');if(expand){let id=Number(expand.dataset.expand);expanded=expanded===id?null:id;render();if(expanded)await loadItemContext(id);return}const b=e.target.closest('[data-action]');if(!b)return;const x=items.find(x=>x.id===Number(b.dataset.id));if(b.dataset.action==='edit'){openEditor(x);return}let status=b.dataset.action;if(status==='restore')status=x.status==='archived'?'notice':x.status==='ignored'?'review':'pending';b.disabled=true;try{await changeStatus(x,status)}catch(err){await load();$('#error').textContent=err.message}finally{b.disabled=false}});
 function hasItemContext(item) {
   return Boolean(item?.message_id || item?.source_message_ids);
 }
@@ -644,6 +726,7 @@ async function showCategories() {
         remove.disabled = true;
         try {
           const result = await categoryRequest(categoryURL + '/' + entry.id, 'DELETE');
+          notifyDshTasks();
           if (editingCategory === entry.id) resetCategoryForm();
           categoryStatus.textContent = '已删除标签，' + result.updated + ' 项移到未分类。';
           await Promise.all([showCategories(), load()]);
@@ -670,6 +753,7 @@ categoryForm.onsubmit = async event => {
   submit.disabled = true;
   try {
     await categoryRequest(id ? categoryURL + '/' + id : categoryURL, id ? 'PUT' : 'POST', {name});
+    if (id) notifyDshTasks();
     resetCategoryForm();
     categoryStatus.textContent = id ? '已更新标签名称。' : '已添加标签。';
     await Promise.all([showCategories(), load()]);
@@ -741,6 +825,7 @@ batchForm.onsubmit = async event => {
   render();
   try {
     const result = await categoryRequest('/api/workbench/items/batch-category', 'PATCH', payload);
+    notifyDshTasks();
     closeBatch();
     await load();
     taskFeedback('已更新 ' + result.updated + ' 项的标签。');
@@ -821,6 +906,10 @@ editorForm.onsubmit = async event => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : '创建失败');
+    notifyDshTasks();
+    taskBoard = false;
+    categoryFilter.value = '';
+    $('#task-search').value = '';
     view = 'pending';
     expanded = null;
     $('#source-filter').value = '';
@@ -851,9 +940,81 @@ $('#upload').onclick=async()=>{const f=$('#file').files[0];if(!f){$('#import-sta
 async function checkUpdate(){try{const r=await fetch('/api/version');if(!r.ok)return;const d=await r.json();if(!d.has_update){$('#update-banner').style.display='none';return}$('#update-banner').style.display='block';$('#update-message').textContent=d.relation==='diverged'?'本地提交与官方版本的历史存在差异，请先核对本地提交再更新。':'发现新版本 '+(d.upstream_version||'');$('#update-button').style.display=d.can_update?'inline-block':'none';if(!d.can_update&&d.relation!=='diverged')$('#update-message').textContent+='，请按安装说明更新。'}catch{}}
 async function pollUpdate(){try{const r=await fetch('/api/update/status');if(!r.ok)throw Error();const d=await r.json();$('#update-message').textContent=d.message||'正在更新…';if(d.state==='error'){ $('#update-button').disabled=false;return }if(d.state==='done'){location.reload();return}}catch{$('#update-message').textContent='服务正在重启，请稍候…'}setTimeout(pollUpdate,2000)}
 $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{const r=await fetch('/api/update',{method:'POST'});const d=await r.json();if(!r.ok)throw Error(d.detail||'无法启动更新');pollUpdate()}catch(e){$('#update-message').textContent=e.message;$('#update-button').disabled=false}};
-(async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();await loadItemContext(x.id);document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
+const dshMode = document.body.dataset.dshMode;
+const dshChannel = 'messagehub-dsh';
+let dshParent = null;
+let pendingTaskFocus = 0;
+
+function notifyDshTasks() {
+  if (dshParent) parent.postMessage({channel: dshChannel, type: 'changed'}, dshParent);
+}
+
+async function focusTask(id) {
+  if (editor.open) {
+    pendingTaskFocus = id;
+    return;
+  }
+  if (!items.some(item => item.id === id)) await load();
+  const item = items.find(item => item.id === id);
+  if (!item) return;
+  document.querySelector('.side-nav [data-page="tasks"]').click();
+  taskBoard = false;
+  categoryFilter.value = '';
+  $('#task-search').value = '';
+  view = active(item) ? 'pending' : ['notice', 'review'].includes(item.status) ? item.status : 'history';
+  expanded = id;
+  $('#source-filter').value = '';
+  render();
+  document.getElementById('task-' + id)?.scrollIntoView({block: 'nearest'});
+  await loadItemContext(id);
+}
+
+if (dshMode) {
+  $('#dsh-retry').onclick = () => load();
+  $('#dsh-switch').onclick = () => {
+    if (dshParent) {
+      parent.postMessage({
+        channel: dshChannel, type: 'navigate', target: dshMode === 'todos' ? 'full' : 'todos',
+        id: expanded,
+      }, dshParent);
+    } else if (dshMode === 'todos') {
+      location.href = expanded ? '/#task-' + expanded : '/#tasks';
+    }
+  };
+  editor.addEventListener('close', () => {
+    if (pendingTaskFocus) {
+      const id = pendingTaskFocus;
+      pendingTaskFocus = 0;
+      focusTask(id);
+    }
+  });
+  window.addEventListener('message', event => {
+    const data = event.data;
+    if (event.source !== parent || parent === window || data?.channel !== dshChannel ||
+        event.origin !== 'dsh-app://app') return;
+    dshParent = event.origin;
+    if (data.type === 'hello') parent.postMessage({channel: dshChannel, type: 'ready'}, dshParent);
+    if (data.type === 'focus' && Number.isSafeInteger(data.id) && data.id > 0) focusTask(data.id);
+    if (data.type === 'notice') $('#dsh-status').textContent = '请先打开一个 DSH 会话。';
+    if (data.type === 'refresh') {
+      document.dispatchEvent(new Event('workbench-refresh'));
+      load({background: true});
+    }
+  });
+}
+
+(async () => {
+  await load();
+  const match = location.hash.match(/^#task-(\d+)$/);
+  if (match) await focusTask(Number(match[1]));
+  if (dshMode !== 'todos') {
+    await status();
+    checkUpdate();
+    setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
+  }
+})();
 </script>
-<script src="/static/dashboard.js?v=3.5.0"></script>
+<script src="/static/dashboard.js?v=3.6.0"></script>
 <script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>

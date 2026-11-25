@@ -1,0 +1,16 @@
+body.dsh-todos .workbench-header {
+  position: sticky;
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding: .5rem .75rem;
+}
+body.dsh-todos :is(.workbench-brand, .nav-toggle, .side-nav, #home-page, #messages-page, #settings-page, #system-page) {
+  display: none !important;
+}
+body.dsh-todos .wrap { width: 100%; padding: .5rem; }
+body.dsh-todos :is(.item, .glass) { min-width: 0; }
+body.dsh-todos :is(.item-title, .details, .meta) { overflow-wrap: anywhere; }
+body.dsh-todos :is(.actions, .meta, .tabs, .item-head) { flex-wrap: wrap; }
+body.dsh-todos #stats { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+body.dsh-todos dialog { max-width: calc(100% - 1rem); }

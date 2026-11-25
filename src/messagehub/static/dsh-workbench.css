@@ -1,0 +1,74 @@
+.workbench[data-dsh-mode="full"] {
+  --dsh-page-inset: clamp(16px, 2vw, 36px);
+}
+
+.workbench[data-dsh-mode="full"] .workbench-header {
+  position: sticky;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-flow: row wrap;
+  gap: 6px 14px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 8px var(--dsh-page-inset);
+  overflow: visible;
+  background: var(--bg);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.workbench[data-dsh-mode="full"] .workbench-brand {
+  padding: 0;
+  font-size: 18px;
+}
+
+.workbench[data-dsh-mode="full"] .workbench-header .side-nav {
+  order: 0;
+  flex: 1 0 auto;
+  flex-flow: row wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workbench[data-dsh-mode="full"] .workbench-header :is(#dsh-switch, #new-item) {
+  order: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.workbench[data-dsh-mode="full"] #dsh-status {
+  order: 2;
+  flex-basis: 100%;
+}
+.workbench[data-dsh-mode="full"] #dsh-status:empty { display: none; }
+
+:root .workbench[data-dsh-mode="full"] .app {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: clamp(24px, 2vw, 36px) var(--dsh-page-inset) 48px;
+}
+
+:root .workbench[data-dsh-mode="full"] .app > main {
+  max-width: none;
+  margin-inline: 0;
+}
+
+:root .workbench[data-dsh-mode="full"] .page:not(#home-page) {
+  margin-inline: 0;
+}
+
+@media (max-width: 880px) {
+  .workbench[data-dsh-mode="full"] .workbench-header .side-nav {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .workbench[data-dsh-mode="full"] #dsh-switch { margin-inline-start: auto; }
+}

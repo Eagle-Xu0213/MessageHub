@@ -51,6 +51,7 @@
     if (page === 'settings') showCategories();
     if (page === 'messages') loadChats();
     if (page === 'tasks' && taskView) {
+      taskBoard = false;
       view = taskView;
       expanded = null;
       render();
@@ -493,7 +494,7 @@
   };
 
   function showHash() {
-    const hash = location.hash.slice(1);
+    const hash = document.body.dataset.dshMode === 'todos' ? 'tasks' : location.hash.slice(1);
     show(hash.startsWith('task-') ? 'tasks' : hash);
   }
   showHash();

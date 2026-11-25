@@ -11,23 +11,23 @@
     <div class="container">
 
         <!-- Top navigation -->
-        <nav class="topnav" style="display:flex;gap:16px;align-items:center;margin-bottom:24px;font-size:13px;">
+        <nav class="topnav subnav">
             <a href="/">← 返回工作台</a>
-            <span style="color:var(--faint);">/</span>
-            <span style="color:var(--ink);font-weight:600;">每日工作简报</span>
-            <span style="flex:1;"></span>
+            <span class="sep">/</span>
+            <span class="cur">每日工作简报</span>
+            <span class="grow"></span>
             <a href="/live">实时流</a>
             <a href="/select">检测范围</a>
         </nav>
 
         <!-- Header card -->
-        <div class="header card" style="padding:24px 28px;margin-bottom:20px;">
-            <h1 style="margin-bottom:6px;">📋 每日工作简报</h1>
-            <p class="sub" style="margin-bottom:16px;">
+        <div class="header card brief-head">
+            <h1 class="mb-sm">每日工作简报</h1>
+            <p class="sub">
                 按日期查看待办、待回复、通知和已处理事项。点击有来源的条目可查看附近聊天记录。
             </p>
-            <div class="controls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);margin:0;">
+            <div class="row wide">
+                <label class="inline-label" style="color:var(--sub);">
                     日期
                     <select id="dateSelect">
                         {% for d in dates %}
@@ -36,8 +36,7 @@
                     </select>
                 </label>
                 <button class="primary" onclick="regenerate()" id="regenBtn">重新生成</button>
-                <button onclick="resetBaseline()" id="resetBtn"
-                        style="background:var(--urgent);border-color:var(--urgent);color:var(--on-accent);">
+                <button class="danger" onclick="resetBaseline()" id="resetBtn">
                     重置监测起点
                 </button>
             </div>
@@ -53,31 +52,31 @@
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-todo">待办</span></h2>
-                    <span class="sub" style="font-size:12px;">需要处理</span>
+                    <span class="faint-sm">需要处理</span>
                 </div>
                 <div id="secTodos"></div>
             </div>
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-reply">需回复</span></h2>
-                    <span class="sub" style="font-size:12px;">等待你的回复</span>
+                    <span class="faint-sm">等待你的回复</span>
                 </div>
                 <div id="secReplies"></div>
             </div>
             <div class="panel">
                 <div class="panel-head">
                     <h2><span class="badge badge-notice">通知</span></h2>
-                    <span class="sub" style="font-size:12px;">仅需知晓</span>
+                    <span class="faint-sm">仅需知晓</span>
                 </div>
                 <div id="secNotices"></div>
             </div>
         </div>
 
         <!-- Resolved / closed-loop section -->
-        <div class="panel" style="margin-bottom:20px;">
+        <div class="panel resolved-panel">
             <div class="panel-head">
                 <h2><span class="badge badge-done">已处理</span></h2>
-                <span class="sub" style="font-size:12px;">已完成的事项</span>
+                <span class="faint-sm">已完成的事项</span>
             </div>
             <div id="secResolved"></div>
         </div>
@@ -93,14 +92,14 @@
     <!-- Context modal -->
     <div class="modal-mask" id="modalMask" onclick="if(event.target===this) closeModal()">
         <div class="modal">
-            <h4 style="font-size:15px;margin-bottom:14px;">
+            <h4 class="modal-title">
                 群内上下文
-                <span id="modalGroup" style="color:var(--faint);font-size:12px;margin-left:8px;"></span>
+                <span id="modalGroup" class="faint-sm"></span>
             </h4>
             <div id="modalBody">
                 <div class="loading">正在加载…</div>
             </div>
-            <div style="text-align:center;margin-top:14px;">
+            <div class="row end mt">
                 <button onclick="closeModal()">关闭</button>
             </div>
         </div>

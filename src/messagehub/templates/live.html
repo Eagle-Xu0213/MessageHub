@@ -11,16 +11,17 @@
 <div class="wrap">
 
   <!-- Back-link header -->
-  <nav class="topnav" style="display:flex;gap:16px;margin-bottom:24px;font-size:13px;">
+  <nav class="topnav subnav">
     <a href="/">← 返回工作台</a>
+    <span class="sep">/</span>
     <a href="/select">检测范围</a>
     <a href="/live" class="cur">实时接入</a>
   </nav>
 
   <!-- Page title -->
-  <div class="page-title" style="margin-bottom:24px;">
+  <div class="page-title">
     <h1>实时消息接入</h1>
-    <p class="sub" style="margin:4px 0 0;">查看接入的实时消息，管理采集通道和 HTTP 接入点。</p>
+    <p class="sub">查看接入的实时消息，管理采集通道和 HTTP 接入点。</p>
   </div>
 
   <div class="note">
@@ -48,14 +49,14 @@
       </div>
       <div class="stat">
         <div class="k">最后轮询</div>
-        <div class="v" id="sLast" style="font-size:15px">—</div>
+        <div class="v sm" id="sLast">—</div>
       </div>
       <div class="stat">
         <div class="k">轮询间隔</div>
-        <div class="v" id="sInterval" style="font-size:15px">—</div>
+        <div class="v sm" id="sInterval">—</div>
       </div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px;">
+    <div class="row mt">
       <button class="primary" id="btnStart">启动采集</button>
       <button id="btnStop">停止采集</button>
       <button id="btnPoll">手动采集一轮</button>
@@ -79,32 +80,32 @@
     <div class="panel-head">
       <h2>采集配置</h2>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;">
-      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+    <div class="row wide mb">
+      <label class="inline-label">
         <input type="checkbox" id="srcTail" checked> 文件增量监听（tail）（导出工具持续写入 JSONL）
       </label>
-      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+      <label class="inline-label">
         <input type="checkbox" id="srcUia" checked> 客户端 UIA 只读
       </label>
-      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
-        间隔 <input type="number" id="cfgInterval" style="width:80px;" min="0.5" max="60" step="0.5" value="3"> 秒
+      <label class="inline-label">
+        间隔 <input type="number" id="cfgInterval" class="field-num" min="0.5" max="60" step="0.5" value="3"> 秒
       </label>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;">
-      <label style="display:inline-flex;align-items:center;gap:4px;margin:0;">
+    <div class="row wide mb">
+      <label class="inline-label">
         <input type="checkbox" id="cfgAll"> 采集所有群（等价于白名单 <code>*</code>）
       </label>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
-      <label style="margin:0;white-space:nowrap;">工作群白名单</label>
-      <input type="text" id="cfgChats" style="flex:1;min-width:200px;max-width:420px;"
+    <div class="row mb">
+      <label class="inline-label" style="white-space:nowrap;">工作群白名单</label>
+      <input type="text" id="cfgChats" class="field-grow"
              placeholder="多个群用英文逗号分隔；留空表示不采集客户端消息">
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+    <div class="row">
       <button class="primary" id="btnSave">保存配置</button>
       <span class="hint">未选定采集范围时只探测窗口结构。放开全群仅影响 UIA 路径，不改变其自绘层限制。</span>
     </div>
-    <div class="hint" id="livePath" style="margin-top:10px;"></div>
+    <div class="hint mt-sm" id="livePath"></div>
   </section>
 
   <!-- ═══ Standard Ingest Endpoint ═══ -->
@@ -113,7 +114,7 @@
       <h2>标准接入点</h2>
       <span class="badge">推荐 · 已验证</span>
     </div>
-    <p class="hint" style="margin:0 0 8px;">
+    <p class="hint mb-sm">
       任何能拿到新消息的工具（导出器、桥接程序、推送脚本）调用一次即可：消息入库时自动去重、
       立刻出现在下方消息流。<b>不依赖微信 客户端控件结构</b>，是当前唯一稳定可用的实时通道。
     </p>
@@ -128,7 +129,7 @@ Content-Type: application/json
   "sent_at": "2026-11-15T11:30:00+08:00",
   "text": "今天下午三点评审"
 }</pre>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;">
+    <div class="row mt">
       <button class="primary" id="btnCopy">复制 PowerShell 示例</button>
       <button id="btnTryIngest">发送示例消息</button>
       <span class="hint" id="copyMsg"></span>
@@ -146,9 +147,9 @@ Content-Type: application/json
     <div class="panel-head">
       <h2>
         实时消息流
-        <span id="streamBadge" class="badge" style="margin-left:6px;">等待新消息</span>
+        <span id="streamBadge" class="badge">等待新消息</span>
       </h2>
-      <span id="latestTs" style="font-size:12px;color:var(--faint);"></span>
+      <span id="latestTs" class="faint-sm"></span>
     </div>
     <div id="stream">
       <div class="empty">暂未收到新消息</div>
@@ -157,7 +158,7 @@ Content-Type: application/json
       <input type="text" id="testText" placeholder="输入一条测试消息，验证实时通道（会真实写入数据库）">
       <button id="btnInject">发送测试消息</button>
     </div>
-    <p class="hint" style="margin-top:10px;">
+    <p class="hint mt-sm">
       其他接入方式：向 <code>imports/live/*.jsonl</code> 追加 JSONL 行（tail 尾随），
       或 <code>POST /api/live/inject</code> 写入单条；正式批量推送请用上方
       <code>POST /api/live/ingest</code>。三种方式共用指纹去重，重复推送不会重复入库。

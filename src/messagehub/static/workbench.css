@@ -1,85 +1,137 @@
 /* Visual refinement follows Unslop by Damir Sokolovsky, CC BY 4.0. */
+/* 工作台（首页与各分页）布局。颜色与基础控件见 glass.css。 */
 .workbench {
   --bento-paper: var(--surface);
-  --bento-radius: 16px;
+  --bento-radius: 6px;
   --bento-divider: var(--line);
-  --calendar-surface: #f2f4fc;
 }
-:root[data-theme="dark"] .workbench {
-  --calendar-surface: #242736;
-}
-.workbench .app { margin: 0 auto; width: min(100%, 1392px); padding: clamp(16px, 4vw, 48px); }
+.workbench .app { width: min(100%, 1280px); margin: 0 auto; padding: 0 clamp(16px, 3vw, 40px) 56px; }
+
+/* 顶栏：左侧字标，右侧导航与主操作，底部一条细线 */
 .workbench-header {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px;
-  max-width: 1392px; margin: auto; padding: 18px clamp(16px, 4vw, 48px) 0;
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 20px;
+  max-width: 1280px; margin: 0 auto; padding: 0 clamp(16px, 3vw, 40px);
+  min-height: 56px; background: var(--bg);
+  border-bottom: 1px solid var(--line);
 }
-.workbench-brand { font-size: 20px; font-weight: 600; color: var(--ink); }
-.workbench-brand span { color: var(--accent); }
-.workbench-header .side-nav { flex: 1; flex-direction: row; flex-wrap: wrap; gap: 4px; overflow: visible; }
-.workbench-header .side-nav button { width: auto; min-height: 44px; font-size: 14px; }
-.workbench-header #new-item { min-height: 44px; }
+.workbench-brand {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--ink);
+}
+.workbench-brand:hover { text-decoration: none; }
+.workbench-brand span {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  background: var(--accent);
+}
+.workbench-header .side-nav {
+  flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none;
+  align-self: stretch; align-items: stretch;
+}
+.workbench-header .side-nav::-webkit-scrollbar { display: none; }
+.workbench-header .side-nav button { white-space: nowrap; min-height: 44px; }
+.workbench-header #new-item { min-height: 36px; padding: 6px 14px; }
+
+/* 首页：左侧主列（待办），右侧辅助列（概览、捕获、日历） */
 .workbench-bento {
-  display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, .55fr)) minmax(0, 1fr);
-  gap: 12px; grid-template-rows: minmax(144px, auto) minmax(144px, auto) auto;
+  display: grid; gap: 20px 28px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
 }
-.bento-card { min-width: 0; border-radius: var(--bento-radius); padding: clamp(16px, 2vw, 24px); background: var(--bento-paper); border: 1px solid var(--bento-divider); }
-.bento-card h2 { font-size: 16px; font-weight: 600; }
-.bento-intro { grid-area: 1 / 1 / 3 / 2; display: flex; flex-direction: column; justify-content: center; gap: 24px; }
-.bento-intro h1 { font-size: clamp(28px, 3.2vw, 44px); line-height: 1.12; font-weight: 600; letter-spacing: -.03em; }
-.bento-intro p { margin: 12px 0 0; color: var(--sub); }
+.bento-card {
+  min-width: 0; padding: 20px 0; background: transparent;
+  border: 0; border-top: 1px solid var(--bento-divider); border-radius: 0;
+}
+.bento-card h2 { font-size: 15px; font-weight: 600; }
+.bento-intro {
+  grid-column: 1 / -1; border-top: 0; padding: 8px 0 4px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px;
+}
+.bento-intro h1 { font-size: 24px; line-height: 1.25; font-weight: 650; letter-spacing: -.02em; }
+.bento-intro p { margin: 4px 0 0; color: var(--sub); font-size: 13px; }
 .bento-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.bento-actions .btn { display: inline-flex; align-items: center; min-height: 44px; }
-.bento-calendar { grid-area: 1 / 2 / 3 / 4; background: var(--calendar-surface); }
-.bento-metrics { grid-area: 1 / 4 / 2 / 5; }
-.bento-capture { grid-area: 2 / 4 / 3 / 5; }
-.bento-tasks { grid-area: 3 / 1 / 4 / 4; }
-.bento-links { grid-area: 3 / 4 / 4 / 5; }
-.bento-metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-.bento-metric-grid button { padding: 4px 8px; text-align: left; border: 0; border-radius: 8px; background: transparent; }
+.bento-actions .btn { display: inline-flex; align-items: center; min-height: 36px; }
+
+.bento-tasks { grid-column: 1; grid-row: 2 / span 3; border-top: 0; padding-top: 0; }
+.bento-calendar { grid-column: 2; }
+.bento-metrics { grid-column: 2; border-top: 0; padding-top: 0; }
+.bento-capture { grid-column: 2; }
+.bento-links { grid-column: 2; }
+.bento-metrics p, .bento-capture p { margin: 6px 0; color: var(--sub); font-size: 13px; }
+.bento-metric-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 12px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
+}
+.bento-metric-grid button {
+  padding: 12px 14px; text-align: left; border: 0; border-radius: 0; background: var(--surface);
+}
+.bento-metric-grid button + button { border-left: 1px solid var(--line); }
 .bento-metric-grid button:hover, .calendar-days button:hover { background: var(--surface-2); }
 .bento-metric-grid strong, .bento-metric-grid span { display: block; }
-.bento-metric-grid strong { font-size: clamp(25px, 3vw, 36px); line-height: 1.2; font-variant-numeric: tabular-nums; }
-.bento-metrics p, .bento-capture p { margin: 8px 0; color: var(--sub); }
-.bento-capture > strong { display: flex; align-items: center; gap: 8px; font-size: 20px; margin-top: 8px; }
-.bento-capture > strong::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--faint); }
+.bento-metric-grid strong { font-size: 24px; line-height: 1.2; font-variant-numeric: tabular-nums; font-weight: 650; }
+.bento-metric-grid span { font-size: 12px; color: var(--sub); }
+
+.bento-capture > strong {
+  display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; margin-top: 6px;
+}
+.bento-capture > strong::before {
+  content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--faint);
+}
 .bento-capture[data-phase="normal"] > strong::before { background: var(--good); }
 .bento-capture[data-phase="failed"] > strong::before { background: var(--urgent); }
 .bento-capture[data-phase="waiting"] > strong::before,
 .bento-capture[data-phase="delayed"] > strong::before { background: var(--warn); }
+
+/* 日历：不再使用着色底 */
 .calendar-nav { display: flex; gap: 4px; }
-.calendar-nav .btn { min-width: 40px; min-height: 40px; padding: 0; font-size: 20px; }
-.calendar-month { margin: 4px 0 8px; font-weight: 600; }
+.calendar-nav .btn { min-width: 32px; min-height: 32px; padding: 0; font-size: 16px; }
+.calendar-month { margin: 2px 0 8px; font-weight: 600; font-size: 13px; }
 .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; gap: 2px; }
-.calendar-days button { min-width: 0; min-height: 40px; padding: 0; border: 0; border-radius: 7px; background: transparent; font-variant-numeric: tabular-nums; }
+.calendar-days button {
+  min-width: 0; min-height: 36px; padding: 0; border: 0; border-radius: var(--r);
+  background: transparent; font-variant-numeric: tabular-nums; font-size: 13px;
+}
 .calendar-days button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .calendar-days .has-tasks { font-weight: 600; position: relative; }
-.calendar-days .has-tasks::after { content: ""; position: absolute; bottom: 4px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.calendar-results { border-top: 1px solid var(--line-strong); margin-top: 8px; padding-top: 8px; }
+.calendar-days .has-tasks::after {
+  content: ""; position: absolute; bottom: 4px; left: calc(50% - 2px);
+  width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+}
+.calendar-results { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 6px; }
 .calendar-results button { min-height: 40px; text-align: left; overflow-wrap: anywhere; }
 .calendar-results p { margin: 0; }
-.workbench .page:not(#home-page) .panel, .workbench .page:not(#home-page) .items { border-radius: var(--bento-radius); }
-.workbench .page-title h1 { font-size: clamp(28px, 4vw, 42px); }
-.workbench .page-title { margin-bottom: 24px; }
+
+.workbench .page-title { margin-bottom: 20px; }
+.workbench .page-title h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
+.workbench .page:not(#home-page) .panel, .workbench .page:not(#home-page) .items { border-radius: var(--r-lg); }
 .workbench #setup-guide { margin-bottom: 12px; }
 .workbench #task-feedback { margin-bottom: 12px; }
 .workbench [hidden] { display: none !important; }
-@media (max-width: 900px) {
-  .workbench-header .side-nav { order: 3; flex-basis: 100%; }
-  .workbench-header #new-item { margin-left: auto; }
-  .workbench-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; }
-  .workbench-bento > * { grid-area: auto; }
-  .bento-intro, .bento-calendar, .bento-tasks, .bento-links { grid-column: 1 / -1; }
+
+/* 平板：右列下移为单列 */
+@media (max-width: 980px) {
+  .workbench-bento { grid-template-columns: minmax(0, 1fr); }
+  .bento-tasks, .bento-calendar, .bento-metrics, .bento-capture, .bento-links {
+    grid-column: 1; grid-row: auto;
+  }
 }
-@media (max-width: 480px) {
-  .workbench-header { gap: 8px; }
-  .workbench-header .side-nav button { padding-inline: 8px; }
+
+/* 手机 */
+@media (max-width: 640px) {
+  .workbench-header { gap: 0 12px; padding-top: 8px; padding-bottom: 0; }
+  .workbench-header #new-item { margin-left: auto; }
+  .workbench-header .side-nav { order: 3; flex-basis: 100%; margin: 0 -16px; padding: 0 16px; }
+  .workbench-header .side-nav button { padding: 10px 10px; font-size: 13px; }
+  .bento-intro h1 { font-size: 21px; }
+  .bento-metric-grid strong { font-size: 20px; }
   .workbench .toolbar { align-items: flex-start; flex-wrap: wrap; }
   .workbench .page-title .btn { margin-top: 10px; }
   .calendar-days button { min-height: 40px; }
-  .bento-capture > strong { font-size: 16px; }
+  .bento-capture > strong { font-size: 15px; }
   .workbench .search { flex-wrap: wrap; }
   .workbench .search input { min-width: 0; }
+  .workbench .search .btn { width: 100%; }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .workbench *, .workbench *::before, .workbench *::after { scroll-behavior: auto; transition-duration: .01ms; animation-duration: .01ms; }
 }

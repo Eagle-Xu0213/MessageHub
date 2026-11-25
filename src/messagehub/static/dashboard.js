@@ -306,11 +306,6 @@
     }
   };
 
-  const ambient = window.MessageHubAmbient;
-  q('#theme-mode').value = ambient.getSettings().theme;
-  q('#theme-mode').onchange = event => ambient.save({theme: event.target.value});
-  q('#skin-mode').value = ambient.getSettings().skin;
-  q('#skin-mode').onchange = event => ambient.save({skin: event.target.value});
   function showHash() {
     const hash = location.hash.slice(1);
     show(hash.startsWith('task-') ? 'tasks' : hash);

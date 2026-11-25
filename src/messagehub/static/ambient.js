@@ -50,6 +50,14 @@
 
   window.MessageHubAmbient = {calculate, apply, save, getSettings:() => ({...settings})};
   apply();
+  document.addEventListener('DOMContentLoaded', () => {
+    for (const key of ['theme', 'skin']) {
+      const control = document.getElementById(key + '-mode');
+      if (!control) continue;
+      control.value = settings[key];
+      control.addEventListener('change', () => save({[key]: control.value}));
+    }
+  }, {once: true});
   if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (settings.theme === 'auto') apply(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) apply(); });
 })();

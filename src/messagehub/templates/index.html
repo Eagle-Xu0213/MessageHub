@@ -6,7 +6,7 @@
   <title>MessageHub 工作台</title>
   <link rel="stylesheet" href="/static/glass.css" data-classic="/static/glass-classic.css">
   <link rel="stylesheet" href="/static/workbench.css" data-classic="/static/workbench-classic.css">
-  <script src="/static/ambient.js"></script>
+  <script src="/static/ambient.js?v=3.2.1"></script>
 </head>
 <body class="workbench">
 
@@ -426,7 +426,7 @@ async function pollUpdate(){try{const r=await fetch('/api/update/status');if(!r.
 $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{const r=await fetch('/api/update',{method:'POST'});const d=await r.json();if(!r.ok)throw Error(d.detail||'无法启动更新');pollUpdate()}catch(e){$('#update-message').textContent=e.message;$('#update-button').disabled=false}};
 (async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
 </script>
-<script src="/static/dashboard.js"></script>
+<script src="/static/dashboard.js?v=3.2.1"></script>
 <script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>

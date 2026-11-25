@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-11-25
+
+- 修复浏览器缓存旧前端脚本或工作台脚本加载失败时，切换皮肤或主题没有生效的问题。
+
 ## [3.2.0] - 2026-11-25
 
 - 设置新增皮肤一（改版前）和皮肤二（改版后）。默认使用皮肤二，浏览器会记住选择，可分别搭配浅色、深色或跟随系统。
@@ -110,7 +114,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...HEAD
+[3.2.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...v3.2.0
 [3.0.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...v2.2.0

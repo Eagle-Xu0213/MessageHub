@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MessageHub 工作台</title>
-  <link rel="stylesheet" href="/static/glass.css">
-  <link rel="stylesheet" href="/static/workbench.css">
+  <link rel="stylesheet" href="/static/glass.css" data-classic="/static/glass-classic.css">
+  <link rel="stylesheet" href="/static/workbench.css" data-classic="/static/workbench-classic.css">
   <script src="/static/ambient.js"></script>
 </head>
 <body class="workbench">
@@ -164,7 +164,13 @@
               <option value="dark">深色</option>
             </select>
           </label>
-          <p class="muted">可选择浅色、深色或跟随系统。</p>
+          <label>
+            皮肤
+            <select id="skin-mode">
+              <option value="classic">皮肤一</option>
+              <option value="modern" selected>皮肤二</option>
+            </select>
+          </label>
         </div>
 
         <!-- Scope -->

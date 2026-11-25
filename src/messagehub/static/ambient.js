@@ -9,9 +9,14 @@
     [20,[190,193,217], [213,197,215], 80],
     [24,[180,187,211], [202,195,214], 45]
   ];
-  let settings = {theme:'auto'};
+  let settings = {theme:'auto', skin:'modern'};
   try { Object.assign(settings, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
   if (!['auto','light','dark'].includes(settings.theme)) settings.theme = 'auto';
+  if (settings.skin !== 'classic') settings.skin = 'modern';
+
+  const skinStyles = Array.from(document.querySelectorAll('link[data-classic]'), link => ({
+    link, modern: link.getAttribute('href'), classic: link.dataset.classic
+  }));
 
   const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function resolved() {
@@ -22,6 +27,10 @@
   function apply() {
     const root = document.documentElement;
     if (root.dataset) root.dataset.theme = ['light','dark'].includes(forced) ? forced : resolved();
+    for (const style of skinStyles) {
+      const href = style[settings.skin];
+      if (style.link.getAttribute('href') !== href) style.link.setAttribute('href', href);
+    }
   }
   function save(changes) {
     settings = {...settings, ...changes};

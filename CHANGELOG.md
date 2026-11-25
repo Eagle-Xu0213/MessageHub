@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-25
+
 - 设置新增皮肤一（改版前）和皮肤二（改版后）。默认使用皮肤二，浏览器会记住选择，可分别搭配浅色、深色或跟随系统。
 - 前端视觉改造：重做配色、字号层级、顶部导航、卡片、按钮与表单样式，移除悬浮位移、模糊遮罩与胶囊标签；首页改为两栏平铺布局，手机端导航可横向滚动。
 - 实时接入页与旧简报模板使用统一的控件和布局样式。
@@ -108,7 +110,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...v3.2.0
 [3.0.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.1.0...v2.1.1

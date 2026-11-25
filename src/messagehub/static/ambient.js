@@ -9,10 +9,10 @@
     [20,[190,193,217], [213,197,215], 80],
     [24,[180,187,211], [202,195,214], 45]
   ];
-  let settings = {theme:'auto', skin:'modern'};
+  let settings = {theme:'auto', skin:'paper'};
   try { Object.assign(settings, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
   if (!['auto','light','dark'].includes(settings.theme)) settings.theme = 'auto';
-  if (settings.skin !== 'classic') settings.skin = 'modern';
+  if (!['classic', 'modern', 'paper'].includes(settings.skin)) settings.skin = 'paper';
 
   const skinStyles = Array.from(document.querySelectorAll('link[data-classic]'), link => ({
     link, modern: link.getAttribute('href'), classic: link.dataset.classic
@@ -26,9 +26,12 @@
   const forced = new URLSearchParams(location.search).get('theme');
   function apply() {
     const root = document.documentElement;
-    if (root.dataset) root.dataset.theme = ['light','dark'].includes(forced) ? forced : resolved();
+    if (root.dataset) {
+      root.dataset.theme = ['light','dark'].includes(forced) ? forced : resolved();
+      root.dataset.skin = settings.skin;
+    }
     for (const style of skinStyles) {
-      const href = style[settings.skin];
+      const href = settings.skin === 'classic' ? style.classic : style.modern;
       if (style.link.getAttribute('href') !== href) style.link.setAttribute('href', href);
     }
   }

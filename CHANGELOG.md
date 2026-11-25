@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-25
+
+- 新增「纸面」外观，统一工作台、待办、消息搜索、设置、检测范围和实时接入页，并在宽屏上并排展示事项、日历和运行概览。首次打开默认使用纸面，已保存的皮肤选择继续生效。
+- 宽屏首页的近期事项、待办日历和概览统一顶边、底边与内边距，窄屏自动重排。
+
 ## [3.2.1] - 2026-11-25
 
 - 修复浏览器缓存旧前端脚本或工作台脚本加载失败时，切换皮肤或主题没有生效的问题。
@@ -114,7 +119,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.1...v3.3.0
 [3.2.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.0.0...v3.2.0
 [3.0.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v2.2.0...v3.0.0

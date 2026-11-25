@@ -6,7 +6,8 @@
   <title>MessageHub 工作台</title>
   <link rel="stylesheet" href="/static/glass.css" data-classic="/static/glass-classic.css">
   <link rel="stylesheet" href="/static/workbench.css" data-classic="/static/workbench-classic.css">
-  <script src="/static/ambient.js?v=3.2.1"></script>
+  <link rel="stylesheet" href="/static/paper.css?v=3.3.0-aligned">
+  <script src="/static/ambient.js?v=3.3.0"></script>
 </head>
 <body class="workbench">
 
@@ -79,26 +80,6 @@
             <div id="calendar-results" class="calendar-results" aria-live="polite"></div>
           </section>
 
-          <section class="bento-card bento-metrics" aria-labelledby="overview-title">
-            <h2 id="overview-title">待办概览</h2>
-            <div class="bento-metric-grid">
-              <button data-page="tasks" data-task-view="pending">
-                <strong id="pending-count">—</strong><span>待处理</span>
-              </button>
-              <button data-page="tasks" data-task-view="review">
-                <strong id="review-count">—</strong><span>待确认</span>
-              </button>
-            </div>
-            <p id="soon-count">正在加载…</p>
-          </section>
-
-          <section class="bento-card bento-capture" aria-labelledby="capture-heading">
-            <h2 id="capture-heading">消息采集</h2>
-            <strong id="capture-title">待检查</strong>
-            <p id="capture-time">正在检查…</p>
-            <button class="link" data-page="system" id="capture-bar">查看运行状态</button>
-          </section>
-
           <section class="bento-card bento-tasks">
             <div class="panel-head">
               <h2>近期事项</h2>
@@ -108,15 +89,37 @@
             <div id="home-tasks" aria-live="polite" class="home-tasks">正在加载…</div>
           </section>
 
-          <section class="bento-card bento-links">
-            <h2>消息与简报</h2>
-            <p>今日新增微信消息 <strong>{{ today_messages }}</strong> 条</p>
-            <div class="bento-actions">
-              <button class="btn" data-page="messages">搜索消息</button>
-              <a class="btn" href="/live">实时消息</a>
-              <a class="btn" href="/brief">工作简报</a>
-            </div>
-          </section>
+          <div class="bento-summary">
+            <section class="bento-card bento-metrics" aria-labelledby="overview-title">
+              <h2 id="overview-title">待办概览</h2>
+              <div class="bento-metric-grid">
+                <button data-page="tasks" data-task-view="pending">
+                  <strong id="pending-count">—</strong><span>待处理</span>
+                </button>
+                <button data-page="tasks" data-task-view="review">
+                  <strong id="review-count">—</strong><span>待确认</span>
+                </button>
+              </div>
+              <p id="soon-count">正在加载…</p>
+            </section>
+
+            <section class="bento-card bento-capture" aria-labelledby="capture-heading">
+              <h2 id="capture-heading">消息采集</h2>
+              <strong id="capture-title">待检查</strong>
+              <p id="capture-time">正在检查…</p>
+              <button class="link" data-page="system" id="capture-bar">查看运行状态</button>
+            </section>
+
+            <section class="bento-card bento-links">
+              <h2>消息与简报</h2>
+              <p>今日新增微信消息 <strong>{{ today_messages }}</strong> 条</p>
+              <div class="bento-actions">
+                <button class="btn" data-page="messages">搜索消息</button>
+                <a class="btn" href="/live">实时消息</a>
+                <a class="btn" href="/brief">工作简报</a>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -156,21 +159,24 @@
         <!-- Appearance -->
         <div class="glass panel settings">
           <h2>外观</h2>
-          <label>
-            主题
-            <select id="theme-mode">
-              <option value="auto">跟随系统</option>
-              <option value="light">浅色</option>
-              <option value="dark">深色</option>
-            </select>
-          </label>
-          <label>
-            皮肤
-            <select id="skin-mode">
-              <option value="classic">皮肤一</option>
-              <option value="modern" selected>皮肤二</option>
-            </select>
-          </label>
+          <div class="appearance-fields">
+            <label>
+              主题
+              <select id="theme-mode">
+                <option value="auto">跟随系统</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+              </select>
+            </label>
+            <label>
+              皮肤
+              <select id="skin-mode">
+                <option value="classic">皮肤一</option>
+                <option value="modern">皮肤二</option>
+                <option value="paper" selected>纸面</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <!-- Scope -->
@@ -426,7 +432,7 @@ async function pollUpdate(){try{const r=await fetch('/api/update/status');if(!r.
 $('#update-button').onclick=async()=>{$('#update-button').disabled=true;try{const r=await fetch('/api/update',{method:'POST'});const d=await r.json();if(!r.ok)throw Error(d.detail||'无法启动更新');pollUpdate()}catch(e){$('#update-message').textContent=e.message;$('#update-button').disabled=false}};
 (async()=>{await load();await status();checkUpdate();let m=location.hash.match(/^#task-(\d+)$/);if(m){let x=items.find(x=>x.id===Number(m[1]));if(x){view=active(x)?'pending':x.status==='notice'?'notice':x.status==='review'?'review':'history';expanded=x.id;render();document.getElementById('task-'+x.id)?.scrollIntoView()}}})();setInterval(() => { if (!document.hidden) checkUpdate(); }, 3600000);
 </script>
-<script src="/static/dashboard.js?v=3.2.1"></script>
+<script src="/static/dashboard.js?v=3.3.0"></script>
 <script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>

@@ -40,7 +40,7 @@ assert.deepStrictEqual(JSON.stringify(calculate(0)),JSON.stringify(calculate(24)
 console.log('Ambient interpolation: 8 checks passed');
 
 assert.deepStrictEqual(links.map(link => link.href), ['/static/glass.css', '/static/workbench.css']);
-assert.strictEqual(controls['skin-mode'].value, 'modern');
+assert.strictEqual(controls['skin-mode'].value, 'paper');
 controls['skin-mode'].value = 'classic';
 controls['skin-mode'].change();
 controls['theme-mode'].value = 'dark';
@@ -49,10 +49,16 @@ assert.deepStrictEqual(links.map(link => link.href), ['/static/glass-classic.css
 const reloaded = loadAppearance();
 assert.strictEqual(reloaded.appearance.getSettings().skin, 'classic');
 assert.strictEqual(reloaded.root.dataset.theme, 'dark');
+assert.strictEqual(reloaded.root.dataset.skin, 'classic');
 assert.deepStrictEqual(reloaded.links.map(link => link.href), links.map(link => link.href));
 assert.strictEqual(reloaded.controls['skin-mode'].value, 'classic');
 reloaded.controls['skin-mode'].value = 'modern';
 reloaded.controls['skin-mode'].change();
 assert.deepStrictEqual(reloaded.links.map(link => link.href), ['/static/glass.css', '/static/workbench.css']);
 assert.strictEqual(reloaded.root.dataset.theme, 'dark');
+assert.strictEqual(reloaded.root.dataset.skin, 'modern');
+reloaded.controls['skin-mode'].value = 'paper';
+reloaded.controls['skin-mode'].change();
+assert.strictEqual(reloaded.root.dataset.skin, 'paper');
+assert.deepStrictEqual(reloaded.links.map(link => link.href), ['/static/glass.css', '/static/workbench.css']);
 console.log('Appearance: skin switching, persistence and independent theme passed');

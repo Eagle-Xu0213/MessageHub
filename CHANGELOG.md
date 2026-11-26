@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [3.6.1] - 2026-11-26
+
+- Windows 登录自启、后台服务恢复和旧版采集辅助命令使用无控制台启动，避免闪出运行窗口。
+
 ## [3.6.0] - 2026-11-25
 
 - 待办页增加紧凑工具栏、事项搜索和标签筛选。浏览器及 DSH 完整工作台可切换三列看板。
@@ -137,7 +141,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.1...HEAD
+[3.6.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.0...v3.6.1
 [3.6.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.3.0...v3.4.0

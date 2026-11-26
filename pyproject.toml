@@ -1,6 +1,6 @@
 [project]
 name = "messagehub"
-version = "3.6.0"
+version = "3.6.1"
 description = "本地优先的微信 工作消息中枢，将重要聊天整理为待办清单"
 readme = "README.md"
 license = { text = "MIT" }

@@ -68,7 +68,7 @@ def main():
         else:
             raise RuntimeError('旧服务未退出，请手动重启 MessageHub')
         subprocess.Popen([sys.executable, '-m', 'uvicorn', 'messagehub.app:app', '--host',
-                          '127.0.0.1', '--port', '8000', '--log-level', 'warning'], cwd=ROOT,
+                          '127.0.0.1', '--port', '8000', '--log-level', 'warning', '--no-use-colors'], cwd=ROOT,
                          creationflags=FLAGS | getattr(subprocess, 'DETACHED_PROCESS', 0), close_fds=True)
         for _ in range(200):
             with socket.socket() as probe:

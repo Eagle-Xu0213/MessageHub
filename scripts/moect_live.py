@@ -491,7 +491,7 @@ def refresh_moect() -> bool:
                 [str(MOECT_EXE), "--smoke", "1", "--data-dir", str(DATA_DIR)],
                 stdout=h_out, stderr=h_err,   # DEVNULL 会触发 Moect 启动异常
                 cwd=str(DATA_DIR),   # 见上方 cwd 注释：Moect 对工作目录敏感
-                startupinfo=hidden)
+                startupinfo=hidden, creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception as e:
             log(f"刷新启动失败: {type(e).__name__}: {e}")
             h_out.close()
@@ -532,7 +532,8 @@ def refresh_moect() -> bool:
                     # 按 UTF-8 解码会炸。映像名是 ASCII，按字节匹配即可。
                     r = subprocess.run(
                         ["tasklist", "/FI", f"IMAGENAME eq {MOECT_EXE.name}"],
-                        capture_output=True, timeout=10, check=False)
+                        capture_output=True, timeout=10, check=False,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     if MOECT_EXE.name.encode() not in (r.stdout or b""):
                         break
                 except Exception:
@@ -544,7 +545,8 @@ def refresh_moect() -> bool:
         try:
             subprocess.run(["taskkill", "/PID", str(kill_pid), "/T", "/F"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=10, check=False)
+                           timeout=10, check=False,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception:
             if proc is not None:
                 try:
@@ -559,7 +561,8 @@ def refresh_moect() -> bool:
         try:
             subprocess.run(["taskkill", "/IM", MOECT_EXE.name, "/F"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=10, check=False)
+                           timeout=10, check=False,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception:
             pass
         h_out.close()

@@ -6,7 +6,7 @@
 #   2. Ensure the Moect GPL source exists at <project>\moect_src (clone if missing)
 #   3. Ensure a system Python (outside .venv) has the small headless dependency set
 #   4. Register "MessageHubHeadless" (pythonw, --once, logon + every 5 min)
-#      and "MessageHubWatchdog" (venv python + watchdog.ps1, logon + every 5 min)
+#      and "MessageHubWatchdog" (wscript + venv pythonw, logon + every 5 min)
 #
 # Usage (from any shell):
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\install_scheduled_tasks.ps1"

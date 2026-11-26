@@ -1,7 +1,14 @@
 Option Explicit
-Dim shell, fso, scriptPath, command
+Dim shell, fso, here, project, python, scriptPath, command, result
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
-scriptPath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "watchdog.ps1")
-command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & scriptPath & """"
-shell.Run command, 0, True
+here = fso.GetParentFolderName(WScript.ScriptFullName)
+project = fso.GetParentFolderName(here)
+python = fso.BuildPath(project, ".venv\Scripts\pythonw.exe")
+scriptPath = fso.BuildPath(here, "watchdog.py")
+If Not fso.FileExists(python) Then WScript.Quit 1
+command = """" & python & """ """ & scriptPath & """"
+On Error Resume Next
+result = shell.Run(command, 0, True)
+If Err.Number <> 0 Then WScript.Quit 1
+WScript.Quit result

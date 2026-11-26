@@ -95,8 +95,13 @@ def start_update() -> None:
         status_file = DB_PATH.parent / 'update_apply.json'
         status_file.write_text(json.dumps({'state': 'starting', 'message': '正在启动更新'}), encoding='utf-8')
         flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'DETACHED_PROCESS', 0)
+        python = Path(sys.executable)
+        if os.name == 'nt':
+            pythonw = python.with_name('pythonw.exe')
+            if pythonw.is_file():
+                python = pythonw
         try:
-            subprocess.Popen([sys.executable, str(BASE_DIR / 'scripts' / 'update_worker.py'), str(os.getpid())],
+            subprocess.Popen([str(python), str(BASE_DIR / 'scripts' / 'update_worker.py'), str(os.getpid())],
                              cwd=BASE_DIR, creationflags=flags, close_fds=True)
         except OSError:
             status_file.write_text(json.dumps({'state': 'error', 'message': '无法启动更新程序'}), encoding='utf-8')

@@ -339,5 +339,11 @@ def test_selected_private_messages_respect_whitelist(ml, tmp_path, monkeypatch):
 
 
 def test_standard_launchers_enable_selected_private_contacts():
-    for name in ('启动 MessageHub.bat', 'scripts/autostart_silent.vbs', 'scripts/watchdog.ps1'):
+    for name in ('启动 MessageHub.bat', 'scripts/watchdog.py'):
         assert '--include-private' in (ROOT / name).read_text(encoding='utf-8-sig')
+
+
+def test_logon_launcher_uses_watchdog():
+    assert 'watchdog_silent.vbs' in (ROOT / 'scripts/autostart_silent.vbs').read_text()
+    assert 'watchdog.py' in (ROOT / 'scripts/watchdog_silent.vbs').read_text()
+    assert 'pythonw.exe' in (ROOT / 'scripts/watchdog_silent.vbs').read_text()

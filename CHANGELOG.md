@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-26
+
+- 待办支持多个可复用的地点标签，可手动编辑、按地点筛选，也可从消息原文识别明确地点。
+
 ## [3.7.1] - 2026-11-26
 
 - 重写安装与使用指南，补全文件导入和 DS Bot 入口，并将 Agent 操作规程整理为按意图执行和分阶段验收。
@@ -149,7 +153,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.1...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.8.0...HEAD
+[3.8.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.1...v3.8.0
 [3.7.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.0...v3.7.1
 [3.7.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.1...v3.7.0
 [3.6.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.0...v3.6.1

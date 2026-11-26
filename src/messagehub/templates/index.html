@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/glass.css" data-classic="/static/glass-classic.css">
   <link rel="stylesheet" href="/static/workbench.css" data-classic="/static/workbench-classic.css">
   <link rel="stylesheet" href="/static/paper.css?v=3.3.0-aligned">
-  <link rel="stylesheet" href="/static/tasks-layout.css?v=3.6.0">
+  <link rel="stylesheet" href="/static/tasks-layout.css?v=3.8.0">
   <link rel="stylesheet" href="/static/chat-messages.css?v=3.4.0">
   {% if dsh_embed and not dsh_todos %}<link rel="stylesheet" href="/static/dsh-workbench.css?v=3.6.0-inset">{% endif %}
   <script src="/static/ambient.js?v=3.3.0"></script>
@@ -228,6 +228,17 @@
           <ul id="category-list"></ul>
         </section>
 
+        <section class="glass panel settings" aria-labelledby="location-heading">
+          <h2 id="location-heading">地点标签</h2>
+          <form id="location-form">
+            <label>地点名称 <input name="name" maxlength="80" required></label>
+            <button class="btn primary" type="submit">添加地点</button>
+            <button class="btn" id="location-cancel" type="button" hidden>取消改名</button>
+          </form>
+          <p id="location-status" role="status"></p>
+          <ul id="location-list"></ul>
+        </section>
+
         <!-- AI enhancement -->
         <div class="glass panel settings">
           <h2>AI 增强（可选）</h2>
@@ -317,6 +328,9 @@
             <select id="task-category-filter" aria-label="标签">
               <option value="">全部标签</option>
             </select>
+            <select id="task-location-filter" aria-label="地点">
+              <option value="">全部地点</option>
+            </select>
           </div>
           {% if not dsh_todos %}
           <button type="button" class="btn" id="task-board-toggle" aria-pressed="false">切换到看板</button>
@@ -389,6 +403,17 @@
         </div>
         <p id="editor-category-status" class="error" role="status"></p>
       </div>
+      <fieldset class="location-picker">
+        <legend>地点</legend>
+        <div id="selected-locations" class="location-selection"></div>
+        <button type="button" class="link" id="clear-locations" hidden>清空地点</button>
+        <label>搜索或输入新地点
+          <input type="search" id="location-query" maxlength="80" autocomplete="off">
+        </label>
+        <div id="location-options" class="location-options"></div>
+        <button type="button" class="btn" id="add-location" hidden>添加为新地点</button>
+        <p id="location-picker-status" class="muted" role="status" hidden></p>
+      </fieldset>
       <label>
         截止时间（可不填）
         <input type="datetime-local" name="deadline">
@@ -415,13 +440,14 @@ const sourceLabels = {wechat: '微信', manual: '手动'};
 let taskBoard = false;
 const boardToggle = $('#task-board-toggle');
 const categoryFilter = $('#task-category-filter');
+const locationFilter = $('#task-location-filter');
 
-for (const [selector, event] of [['#source-filter', 'change'], ['#task-category-filter', 'change'], ['#task-search', 'input']]) {
+for (const [selector, event] of [['#source-filter', 'change'], ['#task-category-filter', 'change'], ['#task-location-filter', 'change'], ['#task-search', 'input']]) {
   $(selector).addEventListener(event, () => { resetBatchSelection(); render(); });
 }
 
 function taskCard(x) {
-  let buttons=active(x)?[...(x.status === 'in_progress' ? [['pending','移回待办']] : [['in_progress','开始']]),['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head">${batchForm.hidden?'':`<input type="checkbox" aria-label="选择待办 ${x.id}" data-select-task="${x.id}" ${selectedTasks.has(x.id)?'checked':''} ${batchSaving?'disabled':''}>`}<button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span><span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`
+  let buttons=active(x)?[...(x.status === 'in_progress' ? [['pending','移回待办']] : [['in_progress','开始']]),['completed','完成'],['dismissed','忽略'],['edit','编辑']]:x.status==='review'?[['pending','加入待办'],['ignored','忽略'],['edit','编辑']]:x.status==='notice'?[['pending','转为待办'],['archived','已读归档'],['edit','编辑']]:[['restore','恢复']];return `<article class="item" id="task-${x.id}"><div class="item-head">${batchForm.hidden?'':`<input type="checkbox" aria-label="选择待办 ${x.id}" data-select-task="${x.id}" ${selectedTasks.has(x.id)?'checked':''} ${batchSaving?'disabled':''}>`}<button class="item-title" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${esc(title(x))}</button><span class="badge">${esc(label[x.status]||x.status)}</span></div>${x.status==='review'&&x.reason?`<p class="muted">${esc(reasonLabel(x.reason))}</p>`:''}${bare(x)&&x.status!=='review'?`<div class="muted">${x.context_summary?'根据相邻消息整理，请核对原文':x.context_summary===undefined?'当前运行的服务版本较旧，请重启 MessageHub 后重试':'未找到足够上下文，请查看原文确认'}</div>`:''}<div class="meta"><span class="badge">${esc(category(x.category))}</span>${(x.locations || []).map(place => `<span class="badge task-location">${esc(place.name)}</span>`).join('')}<span class="${overdue(x)?'late':''}">${x.deadline?'截止：'+esc(x.deadline.replace('T',' ').slice(0,16)):'无截止时间'}</span><span>${esc(sourceLabels[x.source_platform] || x.source_platform || '')}</span><span>${esc(x.conversation_name||'手动创建')}</span></div>${x.status==='review'||x.source_message_ids? `<button class="link" data-expand="${x.id}" aria-expanded="${expanded===x.id}">${expanded===x.id?'收起原文':'查看原文'}</button>`:''}${expanded===x.id?`<div class="details">${x.source_message_ids?'':(x.text?esc(x.text):'手动创建的事项')+'\n\n'}来源：${esc(x.conversation_name)} ${esc(x.sender_name)} ${esc((x.sent_at||'').replace('T',' ').slice(0,16))}\n${esc(reasonLabel(x.reason))}${contexts[x.id]?.length?`<br><br><strong>${x.source_message_ids?'生成任务时选中的消息':'附近聊天记录'}</strong><br>${contexts[x.id].map(m=>`${esc((m.sent_at||'').replace('T',' ').slice(0,16))} ${esc(m.sender_name)}：${esc(m.text)}`).join('<br>')}`:contexts[x.id]===null?'<br><br>上下文加载失败，请收起后重新展开重试。':hasItemContext(x)?(contexts[x.id]?'<br><br>原始消息已不可用。':'<br><br>正在读取上下文…'):''}</div>`:''}<div class="actions">${buttons.map(([act,n])=>`<button class="btn" data-action="${act}" data-id="${x.id}">${n}</button>`).join('')}</div></article>`
 }
 
 function render() {
@@ -435,11 +461,23 @@ function render() {
     categoryFilter.value = options.some(option => option.value === selected) ? selected : '';
   }
   const tag = categoryFilter.value;
+  const selectedPlace = locationFilter.value;
+  const places = new Map(items.flatMap(item => (item.locations || []).map(place => [place.id, place.name])));
+  const placeOptions = [new Option('全部地点', ''), ...[...places].sort((a,b) => a[1].localeCompare(b[1], 'zh-CN'))
+    .map(([id, name]) => new Option(name, String(id)))];
+  if (locationFilter.options.length !== placeOptions.length ||
+      placeOptions.some((option, index) => option.value !== locationFilter.options[index]?.value ||
+        option.text !== locationFilter.options[index]?.text)) {
+    locationFilter.replaceChildren(...placeOptions);
+    locationFilter.value = places.has(Number(selectedPlace)) ? selectedPlace : '';
+  }
+  const placeId = Number(locationFilter.value);
   const words = $('#task-search').value.trim().toLowerCase().split(/\s+/);
   const visibleItems = items.filter(item => {
-    const text = [title(item), item.text, item.context_summary, item.conversation_name, item.category].join(' ').toLowerCase();
+    const text = [title(item), item.text, item.context_summary, item.conversation_name, item.category, ...(item.locations || []).map(place => place.name)].join(' ').toLowerCase();
     return (!platform || item.source_platform === platform) &&
-      (!tag || tag === 'category:' + (item.category || '')) && words.every(word => text.includes(word));
+      (!tag || tag === 'category:' + (item.category || '')) &&
+      (!placeId || (item.locations || []).some(place => place.id === placeId)) && words.every(word => text.includes(word));
   });
   const lanes = [
     ['待确认', item => item.status === 'review'],
@@ -846,6 +884,7 @@ function openEditor(item, messageIds = null) {
   if (editor.open) return;
   editing = item?.id ?? null;
   draftMessageIds = messageIds;
+  resetEditorLocations(item);
   $('#form-title').textContent = messageIds ? '确认任务草稿' : editing ? '编辑事项' : '新建事项';
   editorForm.elements.title.value = item ? item.title || title(item) : '';
   const currentCategory = item?.category || '';
@@ -887,7 +926,7 @@ editorForm.onsubmit = async event => {
   }
   const {elements} = editorForm;
   const data = {title: elements.title.value, category: elements.category.value || null,
-    deadline: elements.deadline.value || null};
+    deadline: elements.deadline.value || null, ...editorLocationPayload()};
   if (draftMessageIds) data.message_ids = draftMessageIds;
   saveItem.disabled = true;
   $('#cancel').disabled = true;
@@ -909,6 +948,7 @@ editorForm.onsubmit = async event => {
     notifyDshTasks();
     taskBoard = false;
     categoryFilter.value = '';
+    locationFilter.value = '';
     $('#task-search').value = '';
     view = 'pending';
     expanded = null;
@@ -1014,7 +1054,8 @@ if (dshMode) {
   }
 })();
 </script>
-<script src="/static/dashboard.js?v=3.6.0"></script>
+<script src="/static/task-locations.js"></script>
+<script src="/static/dashboard.js?v=3.8.0"></script>
 <script src="/static/llm-settings.js"></script>
 <script src="/static/email-settings.js"></script>
 </body>

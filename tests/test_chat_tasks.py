@@ -16,6 +16,7 @@ DRAFT = '/api/workbench/items/draft-from-messages'
 ITEMS = '/api/workbench/items'
 CATEGORIES = '/api/workbench/categories'
 BATCH_CATEGORY = ITEMS + '/batch-category'
+LOCATIONS = '/api/workbench/locations'
 
 
 @pytest.fixture
@@ -113,6 +114,53 @@ def test_draft_save_and_trace_only_selected_messages(chat_client, monkeypatch):
     evidence = chat_client.get(f'{ITEMS}/{task_id}/context').json()['messages']
     assert [msg['id'] for msg in evidence] == [55, 56]
     assert len(calls) == 1
+
+
+def test_locations_reuse_rename_delete_and_optional_patch(chat_client):
+    first = chat_client.post(LOCATIONS, json={'name': ' 行政楼　３０２ '}).json()
+    assert chat_client.post(LOCATIONS, json={'name': '行政楼 302'}).json() == first
+    second = chat_client.post(LOCATIONS, json={'name': '图书馆报告厅'}).json()
+    assert chat_client.get(LOCATIONS).json()['locations'][0]['task_count'] == 0
+    saved = chat_client.post(ITEMS, json={'title': '核对安排', 'category': '会议活动',
+                                         'location_ids': [first['id'], second['id'], first['id']]})
+    assert saved.status_code == 201
+    task_url = f"{ITEMS}/{saved.json()['id']}"
+    assert chat_client.patch(task_url, json={'title': '核对场地安排'}).status_code == 200
+    unchanged, = chat_client.get(ITEMS).json()['items']
+    assert len(unchanged['locations']) == 2
+    assert unchanged['category'] == '会议活动'
+    reused = chat_client.post(ITEMS, json={'title': '借钥匙', 'location_ids': [first['id']]})
+    assert reused.status_code == 201
+    assert chat_client.get(LOCATIONS).json()['locations'][0]['id'] == first['id']
+    first_url = f"{LOCATIONS}/{first['id']}"
+    assert chat_client.put(first_url, json={'name': '会议室 A'}).status_code == 200
+    assert all({'id': first['id'], 'name': '会议室 A'} in item['locations']
+               for item in chat_client.get(ITEMS).json()['items'])
+    assert chat_client.put(first_url, json={'name': second['name']}).status_code == 409
+    assert chat_client.delete(first_url).json() == {'updated': 2}
+    assert chat_client.patch(task_url, json={'location_ids': [first['id']]}).status_code == 409
+    assert chat_client.get(ITEMS).json()['items'][-1]['locations'] == [second]
+    assert chat_client.patch(task_url, json={'location_ids': []}).status_code == 200
+    assert chat_client.get(ITEMS).json()['items'][-1]['locations'] == []
+    assert chat_client.get(LOCATIONS).json()['locations'][0]['task_count'] == 0
+
+
+def test_draft_location_suggestions_do_not_write_until_saved(chat_client, monkeypatch):
+    with database.get_db() as conn:
+        conn.execute("UPDATE messages SET text=? WHERE id=55", ('请提交报名表。地点：行政楼 302、图书馆报告厅',))
+    calls = mock_provider(monkeypatch, 200, {'task': {
+        'title': '提交报名表', 'category': '材料提交', 'location': 'AI 捏造的场地'}})
+    selection = {'message_ids': [55]}
+    draft = chat_client.post(DRAFT, json=selection).json()['draft']
+    assert draft['new_location_names'] == ['行政楼 302', '图书馆报告厅']
+    assert chat_client.get(LOCATIONS).json()['locations'] == []
+    assert len(calls) == 1
+    draft['new_location_names'].pop()
+    saved = chat_client.post(ITEMS, json={**selection, **draft})
+    assert saved.status_code == 201
+    assert chat_client.post(ITEMS, json={**selection, **draft, 'new_location_names': ['不应保存']}).json() == {
+        'id': saved.json()['id'], 'existing': True}
+    assert [entry['name'] for entry in chat_client.get(LOCATIONS).json()['locations']] == ['行政楼 302']
 
 
 def test_draft_validation_and_provider_failures(chat_client, monkeypatch):

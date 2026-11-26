@@ -48,7 +48,7 @@
     }
     if (page === 'home') home();
     if (page === 'system') system();
-    if (page === 'settings') showCategories();
+    if (page === 'settings') { showCategories(); showLocations(); }
     if (page === 'messages') loadChats();
     if (page === 'tasks' && taskView) {
       taskBoard = false;

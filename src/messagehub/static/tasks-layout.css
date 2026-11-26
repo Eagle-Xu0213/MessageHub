@@ -50,3 +50,30 @@
 .dsh-todos .task-filters { flex: 1 0 100%; }
 .dsh-todos .task-filters input { flex: 1 0 100%; }
 .dsh-todos .task-views #batch-toggle { margin-inline-start: 0; }
+
+.location-picker {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r, 8px);
+}
+.location-selection, .location-options, #location-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.location-options { max-height: 110px; overflow: auto; }
+.location-options:empty, .location-selection:empty { display: none; }
+.task-location, .location-remove, .location-options button, #location-list span {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.task-location, .location-remove { border-style: dashed; }
+.location-remove { cursor: pointer; }
+#location-list { padding: 0; }
+#location-list li { margin-block: 6px; }
+#location-list span { flex: 1 1 140px; }
+#editor { max-height: calc(100dvh - 24px); overflow: auto; }

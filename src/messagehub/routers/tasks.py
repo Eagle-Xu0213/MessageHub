@@ -13,6 +13,7 @@ import re
 from messagehub.config import CN_TZ, friendly_name
 from messagehub.database import MESSAGE_TIME_SQL, get_db
 from messagehub.llm.provider import LLMProvider
+from messagehub import task_locations
 
 router = APIRouter()
 
@@ -35,6 +36,8 @@ class WorkbenchItem(BaseModel):
     deadline: Optional[str] = None
     status: Optional[str] = None
     expected_updated_at: Optional[str] = None
+    location_ids: list[Annotated[int, Field(strict=True, gt=0, le=2**63-1)]] = Field(default_factory=list)
+    new_location_names: list[str] = Field(default_factory=list)
 
 
 class NewWorkbenchItem(WorkbenchItem):
@@ -55,6 +58,89 @@ _STATUSES = {'pending', 'accepted', 'in_progress', 'completed', 'review', 'notic
 
 def _category_names(conn):
     return [row[0] for row in conn.execute("SELECT name FROM personal_task_categories ORDER BY name")]
+
+
+def _location_name(raw):
+    name = task_locations.normalize(raw)
+    if not 0 < len(name) <= 80:
+        raise HTTPException(400, '地点名称应为 1 至 80 个字符。')
+    return name
+
+
+def _save_locations(conn, task_id, ids, names, now):
+    selected = set(ids)
+    if any(not conn.execute("SELECT 1 FROM personal_task_locations WHERE id=?", (id_,)).fetchone()
+           for id_ in selected):
+        raise HTTPException(409, '地点已删除，请重新选择。')
+    selected.update(task_locations.get_or_create(conn, _location_name(name), now) for name in names)
+    task_locations.set_links(conn, task_id, selected, now)
+    conn.execute("UPDATE personal_tasks SET locations_manually_set=1 WHERE id=?", (task_id,))
+
+
+@router.get('/api/workbench/locations')
+def workbench_locations():
+    conn = get_db()
+    try:
+        rows = conn.execute("""SELECT l.id,l.name,l.last_used_at,COUNT(t.task_id) AS task_count
+            FROM personal_task_locations l
+            LEFT JOIN personal_task_location_links t ON t.location_id=l.id
+            GROUP BY l.id ORDER BY COALESCE(l.last_used_at,l.created_at) DESC,l.id DESC""")
+        return {'locations': [dict(row) for row in rows]}
+    finally:
+        conn.close()
+
+
+@router.post('/api/workbench/locations', status_code=201)
+def create_location(payload: CategoryInput, request: Request):
+    _same_origin(request)
+    name = _location_name(payload.name)
+    conn = get_db()
+    try:
+        with conn:
+            id_ = task_locations.get_or_create(conn, name, datetime.now(CN_TZ).isoformat())
+            return dict(conn.execute("SELECT id,name FROM personal_task_locations WHERE id=?", (id_,)).fetchone())
+    finally:
+        conn.close()
+
+
+@router.put('/api/workbench/locations/{location_id}')
+def rename_location(location_id: int, payload: CategoryInput, request: Request):
+    _same_origin(request)
+    name = _location_name(payload.name)
+    conn = get_db()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            duplicate = conn.execute("SELECT id FROM personal_task_locations WHERE name_key=? AND id!=?",
+                                     (name.casefold(), location_id)).fetchone()
+            if duplicate:
+                raise HTTPException(409, '已存在同名地点。')
+            updated = conn.execute("UPDATE personal_task_locations SET name=?,name_key=? WHERE id=?",
+                                   (name, name.casefold(), location_id))
+            if not updated.rowcount:
+                raise HTTPException(404, '地点不存在。')
+            return {'id': location_id, 'name': name}
+    finally:
+        conn.close()
+
+
+@router.delete('/api/workbench/locations/{location_id}')
+def delete_location(location_id: int, request: Request):
+    _same_origin(request)
+    conn = get_db()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if not conn.execute("SELECT 1 FROM personal_task_locations WHERE id=?", (location_id,)).fetchone():
+                raise HTTPException(404, '地点不存在。')
+            conn.execute("""UPDATE personal_tasks SET locations_manually_set=1,updated_at=? WHERE id IN
+                (SELECT task_id FROM personal_task_location_links WHERE location_id=?)""",
+                         (datetime.now(CN_TZ).isoformat(), location_id))
+            updated = conn.execute("DELETE FROM personal_task_location_links WHERE location_id=?", (location_id,))
+            conn.execute("DELETE FROM personal_task_locations WHERE id=?", (location_id,))
+            return {'updated': updated.rowcount}
+    finally:
+        conn.close()
 
 
 def _validated_category(conn, category):
@@ -214,7 +300,8 @@ def _context_summary(conn, task):
 
 
 def _validated_item(item: WorkbenchItem, creating: bool = False):
-    values = item.model_dump(exclude_unset=True, exclude={"expected_updated_at", "message_ids"})
+    values = item.model_dump(exclude_unset=True, exclude={
+        "expected_updated_at", "message_ids", "location_ids", "new_location_names"})
     if creating or 'title' in values:
         title = (values.get('title') or '').strip()
         if not title or len(title) > 200:
@@ -247,9 +334,15 @@ async def workbench_items():
                 FROM personal_tasks t JOIN messages m
                 ON m.id = COALESCE(t.message_id, CAST(t.source_message_ids AS INTEGER))""")
         }
+        locations = {}
+        for link in conn.execute("""SELECT t.task_id,l.id,l.name FROM personal_task_location_links t
+            JOIN personal_task_locations l ON l.id=t.location_id ORDER BY l.name,l.id"""):
+            locations.setdefault(link['task_id'], []).append({'id': link['id'], 'name': link['name']})
         items = []
         for row in rows:
             item = dict(row)
+            item.pop('locations_manually_set', None)
+            item['locations'] = locations.get(item['id'], [])
             item['source_platform'] = platforms.get(item['id']) or 'manual'
             item['context_summary'] = _context_summary(conn, item)
             items.append(item)
@@ -329,14 +422,17 @@ def draft_from_messages(selection: MessageSelection, request: Request):
             deadline = None
     else:
         deadline = None
-    return {'draft': {'title': title,
-                      'category': category if isinstance(category, str) and category in categories else None,
-                      'deadline': deadline}}
+    draft = {'title': title, 'category': category if isinstance(category, str) and category in categories else None,
+             'deadline': deadline}
+    names = task_locations.recognize(*(message['text'] for message in messages))
+    if names:
+        draft['new_location_names'] = names
+    return {'draft': draft}
 
 
 @router.post('/api/workbench/items', status_code=201)
 async def create_workbench_item(item: NewWorkbenchItem, request: Request):
-    if item.message_ids is not None:
+    if item.message_ids is not None or {'location_ids', 'new_location_names'} & item.model_fields_set:
         _same_origin(request)
     values = _validated_item(item, creating=True)
     now = datetime.now(CN_TZ).isoformat()
@@ -360,6 +456,8 @@ async def create_workbench_item(item: NewWorkbenchItem, request: Request):
                 existing = conn.execute('SELECT id FROM personal_tasks WHERE source_message_ids=?',
                                         (source_key,)).fetchone()
                 return JSONResponse({'id': existing['id'], 'existing': True})
+            if item.location_ids or item.new_location_names:
+                _save_locations(conn, cur.lastrowid, item.location_ids, item.new_location_names, now)
             conn.commit()
             return {'id': cur.lastrowid}
         cur = conn.execute('''INSERT INTO personal_tasks
@@ -367,6 +465,8 @@ async def create_workbench_item(item: NewWorkbenchItem, request: Request):
              category, deadline, status, reason, updated_at, title)
             VALUES (NULL, '', '手动创建', '', ?, '', ?, ?, 'pending', '手动创建', ?, ?)''',
             (now, category, values.get('deadline'), now, values['title']))
+        if item.location_ids or item.new_location_names:
+            _save_locations(conn, cur.lastrowid, item.location_ids, item.new_location_names, now)
         conn.commit()
         return {'id': cur.lastrowid}
     finally:
@@ -374,15 +474,19 @@ async def create_workbench_item(item: NewWorkbenchItem, request: Request):
 
 
 @router.patch('/api/workbench/items/{task_id}')
-async def edit_workbench_item(task_id: int, item: WorkbenchItem):
+async def edit_workbench_item(task_id: int, item: WorkbenchItem, request: Request):
     values = _validated_item(item)
-    if not values:
+    has_locations = bool({'location_ids', 'new_location_names'} & item.model_fields_set)
+    if has_locations:
+        _same_origin(request)
+    if not values and not has_locations:
         raise HTTPException(status_code=400, detail='没有需要更新的内容')
     values['updated_at'] = datetime.now(CN_TZ).isoformat()
     conn = get_db()
     try:
-        if 'category' in values:
+        if 'category' in values or has_locations:
             conn.execute("BEGIN IMMEDIATE")
+        if 'category' in values:
             values['category'] = _validated_category(conn, values['category'])
         assignments = ', '.join(f'{key}=?' for key in values)
         condition = 'id=?'
@@ -395,6 +499,11 @@ async def edit_workbench_item(task_id: int, item: WorkbenchItem):
             if conn.execute('SELECT 1 FROM personal_tasks WHERE id=?', (task_id,)).fetchone():
                 raise HTTPException(409, '事项已更新，当前操作未生效')
             raise HTTPException(404, '事项不存在')
+        if has_locations:
+            ids = item.location_ids if 'location_ids' in item.model_fields_set else [
+                row[0] for row in conn.execute(
+                    "SELECT location_id FROM personal_task_location_links WHERE task_id=?", (task_id,))]
+            _save_locations(conn, task_id, ids, item.new_location_names, values['updated_at'])
         conn.commit()
         return {'status': 'ok', 'updated_at': values['updated_at']}
     finally:

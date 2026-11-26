@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from messagehub import personal
+from messagehub import personal, task_locations
 from messagehub.config import CN_TZ
 
 _ACTION = re.compile(r"提交|上交|填写|报名|回复|确认|发送|发给|发我|交给|整理|准备|完成|处理|跟进|核对|签字|盖章|参加|出席|写|制作|做|领取|上传|请.{0,8}交")
@@ -232,6 +232,7 @@ def init_store(conn: sqlite3.Connection, baseline: bool = True) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(personal_task_deliveries)")}
     if 'attempted_at' not in columns:
         conn.execute("ALTER TABLE personal_task_deliveries ADD COLUMN attempted_at TEXT")
+    task_locations.init_store(conn)
     if baseline:
         row = conn.execute("SELECT COALESCE(MAX(id),0) FROM messages").fetchone()
         conn.execute("INSERT OR IGNORE INTO task_pipeline_state VALUES ('cursor',?)", (str(row[0]),))
@@ -335,6 +336,7 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
             # A bare mention may follow its instruction in a separate WeChat message.
             candidate = classify(msg)
             contextual_title = None
+            contextual_text = None
             bare_mention = bool(_BARE_MENTION.fullmatch((msg['text'] or '').strip()))
             names = (personal.MY_NICKNAMES or personal.MY_SENDER_NAMES) | ({personal.MY_REALNAME} if personal.MY_REALNAME else set()) | ({personal.MY_SHORTNAME} if personal.MY_SHORTNAME else set())
             mine = bare_mention and any(name and re.fullmatch(r'@[^\s@，,。:：！!？?]*?' + re.escape(name) + r'[\s，,。:：！!？?]*', msg['text'].strip()) for name in names)
@@ -347,7 +349,8 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                 matched = _context_candidate(msg, nearby)
                 if matched:
                     candidate, source = matched
-                    contextual_title = source['text'].strip()[:200]
+                    contextual_text = source['text']
+                    contextual_title = contextual_text.strip()[:200]
             # A work-related follow-up may arrive after an otherwise bare @.
             previous_message = conn.execute('''SELECT *
                 FROM messages WHERE conversation_id=? AND id<? ORDER BY id DESC LIMIT 1''',
@@ -366,9 +369,12 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                             (mention['id'], mention['conversation_id'], mention['conversation_name'], mention['sender_name'],
                              mention['sent_at'], mention['text'], categories.get(info['category'], ''), info['deadline'], info['status'],
                              info['reason'], datetime.now(CN_TZ).isoformat(), source['text'].strip()[:200]))
+                        if cur.rowcount:
+                            task_locations.apply_recognized(conn, cur.lastrowid, datetime.now(CN_TZ).isoformat(),
+                                                           mention['text'], source['text'])
                         result['created'] += cur.rowcount
             # Also handle the instruction arriving in a later capture batch.
-            previous_task = conn.execute('''SELECT m.*,t.id AS task_id
+            previous_task = conn.execute('''SELECT m.*,t.id AS task_id,t.locations_manually_set
                 FROM personal_tasks t JOIN messages m ON m.id=t.message_id
                 WHERE t.conversation_id=? AND t.message_id<?
                 AND t.status='review' AND t.title IS NULL AND t.reason='提及本人，行动不明确'
@@ -380,14 +386,20 @@ def process_batch(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
                 matched = _context_candidate(dict(previous_task), [msg])
                 if matched:
                     info, source = matched
-                    conn.execute('''UPDATE personal_tasks SET status=?,category=?,deadline=?,reason=?,title=?,updated_at=?
+                    updated = conn.execute('''UPDATE personal_tasks SET status=?,category=?,deadline=?,reason=?,title=?,updated_at=?
                         WHERE id=? AND status='review' AND title IS NULL''',
                         (info['status'], categories.get(info['category'], ''), info['deadline'], info['reason'],
                          source['text'].strip()[:200], datetime.now(CN_TZ).isoformat(), previous_task['task_id']))
+                    if updated.rowcount and not previous_task['locations_manually_set']:
+                        task_locations.apply_recognized(conn, previous_task['task_id'], datetime.now(CN_TZ).isoformat(),
+                                                       previous_task['text'], source['text'])
             if candidate:
                 cur = conn.execute("""INSERT OR IGNORE INTO personal_tasks
                     (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,deadline,status,reason,updated_at,title)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (msg["id"], msg["conversation_id"], group, sender, msg["sent_at"], msg["text"], categories.get(candidate["category"], ''), candidate["deadline"], candidate["status"], candidate["reason"], datetime.now(CN_TZ).isoformat(), contextual_title))
+                if cur.rowcount:
+                    task_locations.apply_recognized(conn, cur.lastrowid, datetime.now(CN_TZ).isoformat(),
+                                                   msg["text"], contextual_text)
                 result["created"] += cur.rowcount
         if rows:
             conn.execute("UPDATE task_pipeline_state SET value=? WHERE name='cursor'", (str(rows[-1]["id"]),))

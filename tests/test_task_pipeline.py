@@ -2,7 +2,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-from messagehub import personal
+from messagehub import personal, task_locations
 from messagehub.config import CN_TZ
 from messagehub.task_pipeline import classify, deadline_of, init_store, process_batch
 
@@ -25,6 +25,43 @@ def test_classification_and_no_generic_notices():
     assert classify(dict(base, text='@张三 会议安排'))['status'] == 'review'
     assert classify(dict(base, text='@全体成员 请提交材料'))['status'] == 'notice'
     assert classify(dict(base, text='@李四 请提交材料')) is None
+
+
+def test_location_recognition_conservative():
+    assert task_locations.recognize('地点：行政楼 ３０２、图书馆报告厅。请在行政楼 302 开会。') == [
+        '行政楼 302', '图书馆报告厅']
+    assert task_locations.recognize('在行政楼 302 开会，在图书馆报告厅签到。') == [
+        '行政楼 302', '图书馆报告厅']
+    assert task_locations.recognize('地点：图书馆集合点') == ['图书馆集合点']
+    assert task_locations.recognize('地点：行政楼或图书馆。地点：那里。在周五提交。'
+                                    '地点：行政楼、图书馆，二选一。地点：暂定行政楼。'
+                                    '在学校网站提交，不在行政楼开会。') == []
+
+
+def test_auto_locations_new_tasks_context_and_manual_clear():
+    db = setup_db()
+    add(db, 1, '同事', '@张三 请提交报告。地点：行政楼 302、图书馆报告厅。')
+    process_batch(db)
+    assert [row[0] for row in db.execute('SELECT name FROM personal_task_locations ORDER BY id')] == [
+        '行政楼 302', '图书馆报告厅']
+    add(db, 2, '同事', '@张三')
+    add(db, 3, '同事', '请提交材料。地点：行政楼 ３０２。')
+    process_batch(db)
+    assert db.execute("""SELECT COUNT(*) FROM personal_task_location_links l
+        JOIN personal_tasks t ON t.id=l.task_id WHERE t.message_id=2""").fetchone()[0] == 1
+    assert db.execute('SELECT COUNT(*) FROM personal_task_locations').fetchone()[0] == 2
+    add(db, 4, '另一位同事', '@张三')
+    process_batch(db)
+    db.execute("""INSERT INTO personal_tasks
+        (message_id,conversation_id,conversation_name,sender_name,sent_at,text,category,
+         status,reason,updated_at,locations_manually_set)
+        SELECT id,conversation_id,conversation_name,sender_name,sent_at,text,'其他',
+        'review','提及本人，行动不明确',sent_at,1 FROM messages WHERE id=4""")
+    db.commit()
+    add(db, 5, '另一位同事', '请提交文件。地点：体育馆。')
+    process_batch(db)
+    assert db.execute('SELECT status FROM personal_tasks WHERE message_id=4').fetchone()[0] == 'pending'
+    assert db.execute("SELECT 1 FROM personal_task_locations WHERE name='体育馆'").fetchone() is None
 
 
 def test_automatic_categories_follow_rename_and_delete():
@@ -322,6 +359,8 @@ def test_existing_tasks_migrate_with_backup(tmp_path):
     assert len(list(tmp_path.glob('*.bak'))) == 1
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT text,category,status FROM personal_tasks').fetchone() == ('原文','会议活动','pending')
+        assert db.execute('SELECT locations_manually_set FROM personal_tasks').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM personal_task_location_links').fetchone()[0] == 0
         assert db.execute("SELECT value FROM task_pipeline_state WHERE name='cursor'").fetchone()[0] == '5'
         assert next(x for x in db.execute('PRAGMA table_info(personal_tasks)') if x[1]=='message_id')[3] == 0
     initialize_database(path)

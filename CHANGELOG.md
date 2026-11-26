@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-11-26
+
+- 重写安装与使用指南，补全文件导入和 DS Bot 入口，并将 Agent 操作规程整理为按意图执行和分阶段验收。
+
 ## [3.7.0] - 2026-11-26
 
 - 启用 DS Bot 时，DSH 工作导航收起独立任务看板，并提供 DS Bot 入口。DS Bot 左下角新增打开 MessageHub 待办的按钮。
@@ -145,7 +149,8 @@
 
 - 96 项测试，强制隔离到临时库；测试使用虚构身份，不依赖本地配置
 
-[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.0...HEAD
+[Unreleased]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.1...HEAD
+[3.7.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.7.0...v3.7.1
 [3.7.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.1...v3.7.0
 [3.6.1]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.6.0...v3.6.1
 [3.6.0]: https://github.com/Eagle-Xu0213/MessageHub/compare/v3.5.0...v3.6.0

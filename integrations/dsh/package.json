@@ -1,6 +1,6 @@
 {
   "name": "messagehub-dsh",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "description": "Open the local MessageHub workbench and todo list in DeepSeek Harness",
   "type": "module",
   "exports": {

@@ -18,6 +18,101 @@ window.__ModuleLoader__.load({
         frame?.postMessage({channel, type, ...extra}, origin);
       }
 
+      function openTodos(id) {
+        const sidebar = ctx.sidebarRight;
+        const session = sidebar.mounted.getSnapshot();
+        if (!session) throw new Error('No active session');
+        if (id) rightTasks.set(session, id);
+        const existing = sidebar.openTabs.getSnapshot().find(tab =>
+          tab.sessionId === session && tab.kind === kind);
+        if (existing) {
+          sidebar.focus(existing.tabId);
+          if (!sidebar.isExpanded()) sidebar.toggleExpanded();
+        } else {
+          sidebar.openTab(kind);
+        }
+        return session;
+      }
+
+      // DS Bot 0.3.x renders its own footer and does not expose an action slot.
+      ctx.effect(() => {
+        const agentButton = 'button[class*="_panelRow"]:is([aria-label="智能体"], [aria-label="Agents"])';
+        const taskButton = 'button[class*="_panelRow"]:is([aria-label="任务看板"], [aria-label="Task Board"], [aria-label="Task board"])';
+        const style = document.createElement('style');
+        style.textContent = `
+          body:has(button.bt-return) [class*="_panelEntry"]:has(> ${taskButton}),
+          [class*="_panelEntry"]:has(> [data-messagehub-ds-bot]) > button:not([data-messagehub-ds-bot]) {
+            display: none;
+          }
+        `;
+        document.head.append(style);
+
+        const bot = document.createElement('button');
+        bot.type = 'button';
+        bot.dataset.messagehubDsBot = '';
+        bot.setAttribute('aria-label', 'DS Bot');
+        bot.title = 'DS Bot';
+        bot.addEventListener('click', () => document.querySelector('button.bt-return')?.click());
+
+        const shortcut = document.createElement('button');
+        shortcut.type = 'button';
+        shortcut.className = 'bt-account';
+        shortcut.title = '在右侧打开 MessageHub 待办';
+        shortcut.setAttribute('aria-label', shortcut.title);
+        const icon = document.createElement('span');
+        icon.className = 'bt-you';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '✓';
+        shortcut.append(icon);
+        const syncSession = () => { shortcut.disabled = !ctx.sidebarRight.mounted.getSnapshot(); };
+        shortcut.addEventListener('click', () => {
+          if (ctx.sidebarRight.mounted.getSnapshot()) openTodos();
+        });
+
+        function sync() {
+          const footer = document.querySelector('.bt-leftcol-foot');
+          if (footer && shortcut.parentElement !== footer) footer.append(shortcut);
+          if (!footer && shortcut.isConnected) shortcut.remove();
+
+          const native = document.querySelector('button.bt-return');
+          const entry = native && document.querySelector(agentButton);
+          if (!entry) {
+            if (bot.isConnected) bot.remove();
+            return;
+          }
+          const label = entry.querySelector('[class*="_panelTitle"]');
+          if (bot.parentElement === entry.parentElement && bot.className === entry.className &&
+              Boolean(bot.querySelector('[class*="_panelTitle"]')) === Boolean(label)) return;
+          bot.className = entry.className;
+          const nativeMark = native.querySelector('.bt-mark');
+          const mark = document.createElement('span');
+          mark.setAttribute('aria-hidden', 'true');
+          if (nativeMark) mark.append(nativeMark.cloneNode(true));
+          else mark.textContent = '↗';
+          bot.replaceChildren(mark);
+          if (label) {
+            const title = document.createElement('span');
+            title.className = label.className;
+            title.textContent = 'DS Bot';
+            bot.append(title);
+          }
+          entry.before(bot);
+        }
+
+        const observer = new MutationObserver(sync);
+        observer.observe(document.body, {childList: true, subtree: true});
+        const unsubscribe = ctx.sidebarRight.mounted.subscribe(syncSession);
+        sync();
+        syncSession();
+        return () => {
+          observer.disconnect();
+          unsubscribe();
+          style.remove();
+          bot.remove();
+          shortcut.remove();
+        };
+      });
+
       function navigate(mode, target, id) {
         if (mode === 'todos' && target === 'full') {
           fullTask = id;
@@ -32,17 +127,7 @@ window.__ModuleLoader__.load({
         let attempts = 0;
         function open() {
           try {
-            const session = ctx.sidebarRight.mounted.getSnapshot();
-            if (!session) throw new Error('No active session');
-            if (id) rightTasks.set(session, id);
-            const existing = ctx.sidebarRight.openTabs.getSnapshot().find(tab =>
-              tab.sessionId === session && tab.kind === kind);
-            if (existing) {
-              ctx.sidebarRight.focus(existing.tabId);
-              if (!ctx.sidebarRight.isExpanded()) ctx.sidebarRight.toggleExpanded();
-            } else {
-              ctx.sidebarRight.openTab(kind);
-            }
+            const session = openTodos(id);
             requestAnimationFrame(() => {
               for (const [frame, info] of frames) {
                 if (info.mode === 'todos' && info.session === session && info.visible() && id) {

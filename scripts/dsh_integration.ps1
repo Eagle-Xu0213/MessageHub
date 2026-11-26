@@ -21,7 +21,7 @@ if ($Action -eq 'install') {
         throw 'This integration targets DeepSeek Harness 0.2.3 desktop.'
     }
     $plugin = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\integrations\dsh')).Path.Replace('\', '/')
-    & $DshCli plugin --profile desktop add "link:$plugin" --offline
+    & $DshCli plugin --profile desktop add "link:$plugin" --prefer-offline
 } else {
     & $DshCli plugin --profile desktop remove messagehub-dsh
 }

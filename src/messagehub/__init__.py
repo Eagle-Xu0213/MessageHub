@@ -5,4 +5,4 @@
 实时采集由 scripts/moect_live.py 常驻轮询并 POST /api/live/ingest。
 """
 
-__version__ = "3.6.1"
+__version__ = "3.7.0"
